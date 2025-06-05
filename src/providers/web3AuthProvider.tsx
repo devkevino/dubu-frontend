@@ -24,7 +24,7 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
     const init = async () => {
       try {
         console.log('🔄 [Web3Auth] Initializing...');
-        setState(prev => ({ ...prev, isLoading: true }));
+        setState((prev: Web3AuthState) => ({ ...prev, isLoading: true }));
         
         // Web3Auth 초기화
         await web3auth.initModal();
@@ -36,11 +36,11 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
           await updateUserInfo();
         } else {
           console.log('🚫 [Web3Auth] Not connected');
-          setState(prev => ({ ...prev, isLoading: false }));
+          setState((prev: Web3AuthState) => ({ ...prev, isLoading: false }));
         }
       } catch (error) {
         console.error('❌ [Web3Auth] Initialization error:', error);
-        setState(prev => ({ ...prev, isLoading: false }));
+        setState((prev: Web3AuthState) => ({ ...prev, isLoading: false }));
       }
     };
 
@@ -54,7 +54,7 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
 
     const handleDisconnected = () => {
       console.log('👋 [Web3Auth] Disconnected event fired');
-      setState(prev => ({
+      setState((prev: Web3AuthState) => ({
         ...prev,
         isConnected: false,
         user: null,
@@ -66,7 +66,7 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
 
     const handleConnecting = () => {
       console.log('⏳ [Web3Auth] Connecting...');
-      setState(prev => ({ ...prev, isLoading: true }));
+      setState((prev: Web3AuthState) => ({ ...prev, isLoading: true }));
     };
 
     web3auth.on(ADAPTER_EVENTS.CONNECTED, handleConnected);
@@ -98,7 +98,7 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
         balance
       });
 
-      setState(prev => ({
+      setState((prev: Web3AuthState) => ({
         ...prev,
         isConnected: true,
         user,
@@ -116,14 +116,14 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
       }
     } catch (error) {
       console.error('❌ [Web3Auth] Error updating user info:', error);
-      setState(prev => ({ ...prev, isLoading: false }));
+      setState((prev: Web3AuthState) => ({ ...prev, isLoading: false }));
     }
   };
 
   const login = async (loginProvider?: LoginProvider) => {
     try {
       console.log('🚪 [Web3Auth] Starting login with provider:', loginProvider);
-      setState(prev => ({ ...prev, isLoading: true }));
+      setState((prev: Web3AuthState) => ({ ...prev, isLoading: true }));
 
       let provider: IProvider | null = null;
 
@@ -142,11 +142,11 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
         await updateUserInfo();
       } else {
         console.log('❌ [Web3Auth] Login failed - no provider returned');
-        setState(prev => ({ ...prev, isLoading: false }));
+        setState((prev: Web3AuthState) => ({ ...prev, isLoading: false }));
       }
     } catch (error) {
       console.error('❌ [Web3Auth] Login error:', error);
-      setState(prev => ({ ...prev, isLoading: false }));
+      setState((prev: Web3AuthState) => ({ ...prev, isLoading: false }));
       throw error;
     }
   };
@@ -154,7 +154,7 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
   const logout = async () => {
     try {
       console.log('🔄 [Web3Auth] Starting logout...');
-      setState(prev => ({ ...prev, isLoading: true }));
+      setState((prev: Web3AuthState) => ({ ...prev, isLoading: true }));
       
       await web3auth.logout();
       
@@ -176,7 +176,7 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
       });
     } catch (error) {
       console.error('❌ [Web3Auth] Logout error:', error);
-      setState(prev => ({ ...prev, isLoading: false }));
+      setState((prev: Web3AuthState) => ({ ...prev, isLoading: false }));
     }
   };
 

@@ -167,7 +167,6 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
             key={item.path}
             icon={item.icon}
             label={item.label}
-            path={item.path}
             isActive={location.pathname === item.path}
             collapsed={collapsed}
             onClick={() => navigate(item.path)}

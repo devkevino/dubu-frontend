@@ -77,7 +77,6 @@ const MobileNavigation: React.FC = () => {
             <NavItem
               icon={item.icon}
               label={item.label}
-              path={item.path}
               isActive={location.pathname === item.path}
               onClick={() => navigate(item.path)}
             />

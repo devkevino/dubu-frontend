@@ -1,5 +1,5 @@
-import React from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import React, { useEffect } from 'react';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { SigninPage } from './pages/SigninPage';
 import DashboardPage from './pages/DashboardPage';
 import EarnPage from './pages/EarnPage';
@@ -12,6 +12,13 @@ import { useWeb3Auth } from './providers/Web3AuthProvider';
 // Protected Route Component
 const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isConnected, isLoading } = useWeb3Auth();
+  const navigate = useNavigate();
+  
+  useEffect(() => {
+    if (!isLoading && !isConnected) {
+      navigate('/signin', { replace: true });
+    }
+  }, [isLoading, isConnected, navigate]);
   
   // 로딩 중일 때는 로딩 스피너 표시
   if (isLoading) {
@@ -25,17 +32,24 @@ const ProtectedRoute: React.FC<{ children: React.ReactNode }> = ({ children }) =
     );
   }
   
-  // 로그인되지 않았으면 signin 페이지로 리다이렉트
-  return isConnected ? (
-    <AppLayout>{children}</AppLayout>
-  ) : (
-    <Navigate to="/signin" replace />
-  );
+  // 로그인되지 않았으면 null 반환 (useEffect에서 리다이렉트 처리)
+  if (!isConnected) {
+    return null;
+  }
+  
+  return <AppLayout>{children}</AppLayout>;
 };
 
 // Public Route Component
 const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const { isConnected, isLoading } = useWeb3Auth();
+  const navigate = useNavigate();
+  
+  useEffect(() => {
+    if (!isLoading && isConnected) {
+      navigate('/dashboard', { replace: true });
+    }
+  }, [isLoading, isConnected, navigate]);
   
   // 로딩 중일 때는 로딩 스피너 표시
   if (isLoading) {
@@ -49,11 +63,24 @@ const PublicRoute: React.FC<{ children: React.ReactNode }> = ({ children }) => {
     );
   }
   
-  // 이미 로그인되어 있으면 대시보드로 리다이렉트
-  return isConnected ? <Navigate to="/dashboard" replace /> : <>{children}</>;
+  // 이미 로그인되어 있으면 null 반환 (useEffect에서 리다이렉트 처리)
+  if (isConnected) {
+    return null;
+  }
+  
+  return <>{children}</>;
 };
 
 const AppRouter: React.FC = () => {
+  const location = useLocation();
+  const { isConnected, isLoading } = useWeb3Auth();
+  
+  // 디버깅 로그
+  useEffect(() => {
+    console.log('🧭 [Router] Current path:', location.pathname);
+    console.log('🧭 [Router] Auth state:', { isConnected, isLoading });
+  }, [location.pathname, isConnected, isLoading]);
+  
   return (
     <Routes>
       {/* Default redirect */}
@@ -124,10 +151,10 @@ const AppRouter: React.FC = () => {
               <h1 className="text-4xl font-bold text-gray-900 mb-4">404</h1>
               <p className="text-gray-600 mb-6">Page not found</p>
               <button
-                onClick={() => window.location.href = '/dashboard'}
+                onClick={() => window.location.href = '/'}
                 className="inline-flex items-center px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
               >
-                Go to Dashboard
+                Go to Home
               </button>
             </div>
           </div>

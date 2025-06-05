@@ -1,8 +1,20 @@
-import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import { WALLET_ADAPTERS, ADAPTER_EVENTS, IProvider } from "@web3auth/base";
 import Web3 from "web3";
 import web3auth, { CURRENT_NETWORK } from '../lib/web3auth/config';
 import { Web3AuthContextType, Web3AuthState, Web3AuthUser, LoginProvider } from '../types/web3auth.types';
+
+// Ethereum RPC Error 타입 정의
+interface EthereumRpcError extends Error {
+  code: number;
+  message: string;
+  data?: unknown;
+}
+
+// Provider 타입 확장 (IProvider의 request 메서드와 호환되도록)
+type Web3Provider = IProvider & {
+  request?: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+};
 
 const Web3AuthContext = createContext<Web3AuthContextType | null>(null);
 
@@ -22,83 +34,22 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
     networkName: null,
   });
 
-  useEffect(() => {
-    const init = async () => {
-      try {
-        console.log(`🔄 [Web3Auth] Initializing for ${CURRENT_NETWORK.displayName}...`);
-        setState((prev: Web3AuthState) => ({ ...prev, isLoading: true }));
-        
-        // Web3Auth 초기화
-        await web3auth.initModal();
-        console.log(`✅ [Web3Auth] Modal initialized for ${CURRENT_NETWORK.displayName}`);
-        
-        // 기존 연결 확인
-        if (web3auth.connected) {
-          console.log('🔗 [Web3Auth] Already connected, updating user info...');
-          await updateUserInfo();
-        } else {
-          console.log('🚫 [Web3Auth] Not connected');
-          setState((prev: Web3AuthState) => ({ 
-            ...prev, 
-            isLoading: false,
-            networkName: CURRENT_NETWORK.displayName,
-            chainId: CURRENT_NETWORK.chainId,
-          }));
-        }
-      } catch (error) {
-        console.error('❌ [Web3Auth] Initialization error:', error);
-        setState((prev: Web3AuthState) => ({ ...prev, isLoading: false }));
-      }
-    };
-
-    init();
-
-    // Web3Auth 이벤트 리스너
-    const handleConnected = () => {
-      console.log('🎉 [Web3Auth] Connected event fired');
-      updateUserInfo();
-    };
-
-    const handleDisconnected = () => {
-      console.log('👋 [Web3Auth] Disconnected event fired');
-      setState((prev: Web3AuthState) => ({
-        ...prev,
-        isConnected: false,
-        user: null,
-        provider: null,
-        address: null,
-        balance: null,
-        chainId: CURRENT_NETWORK.chainId,
-        networkName: CURRENT_NETWORK.displayName,
-      }));
-    };
-
-    const handleConnecting = () => {
-      console.log(`⏳ [Web3Auth] Connecting to ${CURRENT_NETWORK.displayName}...`);
-      setState((prev: Web3AuthState) => ({ ...prev, isLoading: true }));
-    };
-
-    web3auth.on(ADAPTER_EVENTS.CONNECTED, handleConnected);
-    web3auth.on(ADAPTER_EVENTS.DISCONNECTED, handleDisconnected);
-    web3auth.on(ADAPTER_EVENTS.CONNECTING, handleConnecting);
-
-    return () => {
-      web3auth.off(ADAPTER_EVENTS.CONNECTED, handleConnected);
-      web3auth.off(ADAPTER_EVENTS.DISCONNECTED, handleDisconnected);
-      web3auth.off(ADAPTER_EVENTS.CONNECTING, handleConnecting);
-    };
-  }, []);
-
-  const updateUserInfo = async () => {
+  const updateUserInfo = useCallback(async () => {
     try {
       console.log(`📊 [Web3Auth] Updating user info for ${CURRENT_NETWORK.displayName}...`);
+      
+      if (!web3auth.connected) {
+        console.log('❌ [Web3Auth] Not connected, skipping user info update');
+        return;
+      }
+
       const user = await getUserInfo();
       const provider = web3auth.provider;
       const accounts = await getAccounts();
       const address = accounts[0] || null;
-      const balance = address ? await getBalance() : null;
+      const balance = address ? await getBalance(address) : null;
       const chainId = await getChainId();
-      const networkName = await getNetworkName();
+      const networkName = await getNetworkName(chainId);
 
       console.log('👤 [Web3Auth] User info retrieved:', {
         email: user?.email,
@@ -134,11 +85,145 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
       // 네트워크 체크
       if (chainId !== CURRENT_NETWORK.chainId) {
         console.warn(`⚠️ [Web3Auth] Connected to wrong network. Expected ${CURRENT_NETWORK.displayName}.`);
-        await switchToCurrentNetwork();
       }
     } catch (error) {
       console.error('❌ [Web3Auth] Error updating user info:', error);
       setState((prev: Web3AuthState) => ({ ...prev, isLoading: false }));
+    }
+  }, []);
+
+  useEffect(() => {
+    const init = async () => {
+      try {
+        console.log(`🔄 [Web3Auth] Initializing for ${CURRENT_NETWORK.displayName}...`);
+        setState((prev: Web3AuthState) => ({ ...prev, isLoading: true }));
+        
+        // Web3Auth 초기화
+        await web3auth.initModal();
+        console.log(`✅ [Web3Auth] Modal initialized for ${CURRENT_NETWORK.displayName}`);
+        
+        // 기존 연결 확인
+        if (web3auth.connected) {
+          console.log('🔗 [Web3Auth] Already connected, updating user info...');
+          await updateUserInfo();
+        } else {
+          console.log('🚫 [Web3Auth] Not connected');
+          setState((prev: Web3AuthState) => ({ 
+            ...prev, 
+            isLoading: false,
+            networkName: CURRENT_NETWORK.displayName,
+            chainId: CURRENT_NETWORK.chainId,
+          }));
+        }
+      } catch (error) {
+        console.error('❌ [Web3Auth] Initialization error:', error);
+        setState((prev: Web3AuthState) => ({ ...prev, isLoading: false }));
+      }
+    };
+
+    init();
+  }, [updateUserInfo]);
+
+  useEffect(() => {
+    // Web3Auth 이벤트 리스너
+    const handleConnected = () => {
+      console.log('🎉 [Web3Auth] Connected event fired');
+      updateUserInfo();
+    };
+
+    const handleDisconnected = () => {
+      console.log('👋 [Web3Auth] Disconnected event fired');
+      setState({
+        isLoading: false,
+        isConnected: false,
+        user: null,
+        provider: null,
+        address: null,
+        balance: null,
+        chainId: CURRENT_NETWORK.chainId,
+        networkName: CURRENT_NETWORK.displayName,
+      });
+    };
+
+    const handleConnecting = () => {
+      console.log(`⏳ [Web3Auth] Connecting to ${CURRENT_NETWORK.displayName}...`);
+      setState((prev: Web3AuthState) => ({ ...prev, isLoading: true }));
+    };
+
+    web3auth.on(ADAPTER_EVENTS.CONNECTED, handleConnected);
+    web3auth.on(ADAPTER_EVENTS.DISCONNECTED, handleDisconnected);
+    web3auth.on(ADAPTER_EVENTS.CONNECTING, handleConnecting);
+
+    return () => {
+      web3auth.off(ADAPTER_EVENTS.CONNECTED, handleConnected);
+      web3auth.off(ADAPTER_EVENTS.DISCONNECTED, handleDisconnected);
+      web3auth.off(ADAPTER_EVENTS.CONNECTING, handleConnecting);
+    };
+  }, [updateUserInfo]);
+
+  const getUserInfo = async (): Promise<Web3AuthUser | null> => {
+    try {
+      if (!web3auth.connected) return null;
+      const userInfo = await web3auth.getUserInfo();
+      return userInfo as Web3AuthUser;
+    } catch (error) {
+      console.error('❌ [Web3Auth] Get user info error:', error);
+      return null;
+    }
+  };
+
+  const getAccounts = async (): Promise<string[]> => {
+    try {
+      if (!web3auth.provider) return [];
+      
+      const web3 = new Web3(web3auth.provider as unknown as string);
+      const accounts = await web3.eth.getAccounts();
+      return accounts;
+    } catch (error) {
+      console.error('❌ [Web3Auth] Get accounts error:', error);
+      return [];
+    }
+  };
+
+  const getBalance = async (address?: string): Promise<string> => {
+    try {
+      if (!web3auth.provider || (!address && !state.address)) return '0';
+      
+      const targetAddress = address || state.address;
+      if (!targetAddress) return '0';
+      
+      const web3 = new Web3(web3auth.provider as unknown as string);
+      const balance = await web3.eth.getBalance(targetAddress);
+      return Web3.utils.fromWei(balance, 'ether');
+    } catch (error) {
+      console.error('❌ [Web3Auth] Get balance error:', error);
+      return '0';
+    }
+  };
+
+  const getChainId = async (): Promise<number | null> => {
+    try {
+      if (!web3auth.provider) return null;
+      
+      const web3 = new Web3(web3auth.provider as unknown as string);
+      const chainId = await web3.eth.getChainId();
+      return Number(chainId);
+    } catch (error) {
+      console.error('❌ [Web3Auth] Get chain ID error:', error);
+      return null;
+    }
+  };
+
+  const getNetworkName = async (chainId?: number | null): Promise<string> => {
+    try {
+      const id = chainId !== undefined ? chainId : await getChainId();
+      if (id === CURRENT_NETWORK.chainId) {
+        return CURRENT_NETWORK.displayName;
+      }
+      return `Unknown Network (${id})`;
+    } catch (error) {
+      console.error('❌ [Web3Auth] Get network name error:', error);
+      return 'Unknown Network';
     }
   };
 
@@ -178,7 +263,9 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
       console.log('🔄 [Web3Auth] Starting logout...');
       setState((prev: Web3AuthState) => ({ ...prev, isLoading: true }));
       
-      await web3auth.logout();
+      if (web3auth.connected) {
+        await web3auth.logout();
+      }
       
       // localStorage 정리
       localStorage.removeItem('isAuthenticated');
@@ -189,6 +276,7 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
       
       console.log('✅ [Web3Auth] Logout completed');
       
+      // 상태 초기화
       setState({
         isLoading: false,
         isConnected: false,
@@ -201,70 +289,18 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
       });
     } catch (error) {
       console.error('❌ [Web3Auth] Logout error:', error);
-      setState((prev: Web3AuthState) => ({ ...prev, isLoading: false }));
-    }
-  };
-
-  const getUserInfo = async (): Promise<Web3AuthUser | null> => {
-    try {
-      if (!web3auth.connected) return null;
-      const userInfo = await web3auth.getUserInfo();
-      return userInfo as Web3AuthUser;
-    } catch (error) {
-      console.error('❌ [Web3Auth] Get user info error:', error);
-      return null;
-    }
-  };
-
-  const getAccounts = async (): Promise<string[]> => {
-    try {
-      if (!web3auth.provider) return [];
-      
-      const web3 = new Web3(web3auth.provider as unknown as string);
-      const accounts = await web3.eth.getAccounts();
-      return accounts;
-    } catch (error) {
-      console.error('❌ [Web3Auth] Get accounts error:', error);
-      return [];
-    }
-  };
-
-  const getBalance = async (): Promise<string> => {
-    try {
-      if (!web3auth.provider || !state.address) return '0';
-      
-      const web3 = new Web3(web3auth.provider as unknown as string);
-      const balance = await web3.eth.getBalance(state.address);
-      return Web3.utils.fromWei(balance, 'ether');
-    } catch (error) {
-      console.error('❌ [Web3Auth] Get balance error:', error);
-      return '0';
-    }
-  };
-
-  const getChainId = async (): Promise<number | null> => {
-    try {
-      if (!web3auth.provider) return null;
-      
-      const web3 = new Web3(web3auth.provider as unknown as string);
-      const chainId = await web3.eth.getChainId();
-      return Number(chainId);
-    } catch (error) {
-      console.error('❌ [Web3Auth] Get chain ID error:', error);
-      return null;
-    }
-  };
-
-  const getNetworkName = async (): Promise<string> => {
-    try {
-      const chainId = await getChainId();
-      if (chainId === CURRENT_NETWORK.chainId) {
-        return CURRENT_NETWORK.displayName;
-      }
-      return `Unknown Network (${chainId})`;
-    } catch (error) {
-      console.error('❌ [Web3Auth] Get network name error:', error);
-      return 'Unknown Network';
+      // 에러가 발생해도 상태 초기화
+      setState({
+        isLoading: false,
+        isConnected: false,
+        user: null,
+        provider: null,
+        address: null,
+        balance: null,
+        chainId: CURRENT_NETWORK.chainId,
+        networkName: CURRENT_NETWORK.displayName,
+      });
+      throw error;
     }
   };
 
@@ -274,19 +310,36 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
         throw new Error('Provider not available');
       }
 
+      const provider = web3auth.provider as Web3Provider;
+      
+      if (!provider.request) {
+        console.error('❌ [Web3Auth] Provider does not support request method');
+        return false;
+      }
+
       // MetaMask 스타일의 네트워크 전환 요청
-      await (web3auth.provider as any).request({
+      await provider.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: CURRENT_NETWORK.chainIdHex }],
       });
 
       console.log(`✅ [Web3Auth] Switched to ${CURRENT_NETWORK.displayName}`);
+      await updateUserInfo();
       return true;
-    } catch (switchError: any) {
+    } catch (switchError) {
+      const error = switchError as EthereumRpcError;
+      
       // 네트워크가 추가되지 않은 경우 추가 시도
-      if (switchError.code === 4902) {
+      if (error.code === 4902) {
         try {
-          await (web3auth.provider as any).request({
+          const provider = web3auth.provider as Web3Provider;
+          
+          if (!provider.request) {
+            console.error('❌ [Web3Auth] Provider does not support request method');
+            return false;
+          }
+          
+          await provider.request({
             method: 'wallet_addEthereumChain',
             params: [{
               chainId: CURRENT_NETWORK.chainIdHex,
@@ -298,13 +351,14 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
           });
 
           console.log(`✅ [Web3Auth] Added and switched to ${CURRENT_NETWORK.displayName}`);
+          await updateUserInfo();
           return true;
         } catch (addError) {
           console.error(`❌ [Web3Auth] Failed to add ${CURRENT_NETWORK.displayName}:`, addError);
           return false;
         }
       } else {
-        console.error(`❌ [Web3Auth] Failed to switch to ${CURRENT_NETWORK.displayName}:`, switchError);
+        console.error(`❌ [Web3Auth] Failed to switch to ${CURRENT_NETWORK.displayName}:`, error);
         return false;
       }
     }
@@ -343,7 +397,7 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
     getBalance,
     getChainId,
     getNetworkName,
-    switchToOpBNBTestnet: switchToCurrentNetwork, // Legacy compatibility
+    switchToOpBNBTestnet: switchToCurrentNetwork,
     signMessage,
     getTestBNB,
   };

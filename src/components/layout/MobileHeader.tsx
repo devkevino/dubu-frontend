@@ -1,4 +1,5 @@
-import React from 'react';
+import React, { useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   TrendingUp, 
   Bell, 
@@ -10,9 +11,10 @@ import { useWeb3Auth } from '../../providers/Web3AuthProvider';
 import { CURRENT_NETWORK } from '../../config/networks';
 
 const MobileHeader: React.FC = () => {
+  const navigate = useNavigate();
   const { logout, user, isConnected, address, balance, chainId, networkName } = useWeb3Auth();
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     try {
       console.log('🚪 [Mobile] Starting logout process...');
       console.log('📊 [Mobile] Current auth state before logout:', { isConnected, user });
@@ -26,14 +28,14 @@ const MobileHeader: React.FC = () => {
         loginProvider: localStorage.getItem('loginProvider')
       });
       
-      // 로그아웃 후 명시적으로 signin 페이지로 이동
-      window.location.href = '/signin';
+      // React Router를 사용하여 안전하게 이동
+      navigate('/signin', { replace: true });
     } catch (error) {
       console.error('❌ [Mobile] Logout error:', error);
-      // 에러가 발생해도 일단 signin 페이지로 이동
-      window.location.href = '/signin';
+      // 에러가 발생해도 signin 페이지로 이동
+      navigate('/signin', { replace: true });
     }
-  };
+  }, [logout, navigate]);
 
   return (
     <header className="bg-white border-b border-gray-200 px-4 py-3 sticky top-0 z-30">

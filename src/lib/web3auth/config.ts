@@ -3,7 +3,7 @@ import { EthereumPrivateKeyProvider } from "@web3auth/ethereum-provider";
 import { Web3Auth } from "@web3auth/modal";
 
 const clientId = import.meta.env.VITE_WEB3AUTH_CLIENT_ID;
-const appName = import.meta.env.VITE_APP_NAME || "MineCore Mining Platform";
+const appName = import.meta.env.VITE_APP_NAME || "DUBU Coin";
 
 if (!clientId) {
   throw new Error("Web3Auth Client ID is not set in environment variables");

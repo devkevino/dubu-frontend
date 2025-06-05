@@ -78,7 +78,7 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
       web3auth.off(ADAPTER_EVENTS.DISCONNECTED, handleDisconnected);
       web3auth.off(ADAPTER_EVENTS.CONNECTING, handleConnecting);
     };
-  }, []);
+  }, []); // updateUserInfo를 의존성에서 제거
 
   const updateUserInfo = async () => {
     try {
@@ -195,7 +195,7 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
     try {
       if (!web3auth.provider) return [];
       
-      const web3 = new Web3(web3auth.provider as any);
+      const web3 = new Web3(web3auth.provider as unknown as string);
       const accounts = await web3.eth.getAccounts();
       return accounts;
     } catch (error) {
@@ -208,9 +208,9 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
     try {
       if (!web3auth.provider || !state.address) return '0';
       
-      const web3 = new Web3(web3auth.provider as any);
+      const web3 = new Web3(web3auth.provider as unknown as string);
       const balance = await web3.eth.getBalance(state.address);
-      return web3.utils.fromWei(balance, 'ether');
+      return Web3.utils.fromWei(balance, 'ether');
     } catch (error) {
       console.error('❌ [Web3Auth] Get balance error:', error);
       return '0';
@@ -223,7 +223,7 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
         throw new Error('Provider or address not available');
       }
       
-      const web3 = new Web3(web3auth.provider as any);
+      const web3 = new Web3(web3auth.provider as unknown as string);
       const signature = await web3.eth.personal.sign(message, state.address, '');
       return signature;
     } catch (error) {

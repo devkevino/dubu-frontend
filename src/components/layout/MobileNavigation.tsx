@@ -10,7 +10,6 @@ import {
 interface NavItemProps {
   icon: React.ElementType;
   label: string;
-  path: string;
   isActive: boolean;
   onClick: () => void;
 }
@@ -18,7 +17,6 @@ interface NavItemProps {
 const NavItem: React.FC<NavItemProps> = ({ 
   icon: Icon, 
   label, 
-  path, 
   isActive, 
   onClick 
 }) => {

@@ -17,7 +17,7 @@ export const SigninPage: React.FC = () => {
     try {
       await login(provider);
       navigate('/dashboard');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(`${provider} login error:`, error);
       setError(`Failed to login with ${provider}. Please try again.`);
     }
@@ -33,7 +33,7 @@ export const SigninPage: React.FC = () => {
     try {
       await login('email_passwordless');
       navigate('/dashboard');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Email login error:', error);
       setError('Failed to login with email. Please check your email for the magic link.');
     }
@@ -44,7 +44,7 @@ export const SigninPage: React.FC = () => {
     try {
       await login('web3auth'); // 이렇게 하면 Web3Auth 모달이 열림
       navigate('/dashboard');
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Web3Auth modal error:', error);
       setError('Failed to open Web3Auth login. Please try again.');
     }

@@ -1,5 +1,4 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import { 
   TrendingUp, 
   Bell, 
@@ -10,7 +9,6 @@ import {
 import { useWeb3Auth } from '../../providers/Web3AuthProvider';
 
 const MobileHeader: React.FC = () => {
-  const navigate = useNavigate();
   const { logout, user, isConnected, address } = useWeb3Auth();
 
   const handleLogout = async () => {

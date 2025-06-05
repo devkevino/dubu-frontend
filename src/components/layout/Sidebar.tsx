@@ -22,7 +22,6 @@ interface SidebarProps {
 interface MenuItemProps {
   icon: React.ElementType;
   label: string;
-  path: string;
   isActive: boolean;
   collapsed: boolean;
   onClick: () => void;
@@ -31,7 +30,6 @@ interface MenuItemProps {
 const MenuItem: React.FC<MenuItemProps> = ({ 
   icon: Icon, 
   label, 
-  path, 
   isActive, 
   collapsed, 
   onClick 

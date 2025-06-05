@@ -9,7 +9,7 @@ import {
 import { useWeb3Auth } from '../../providers/Web3AuthProvider';
 
 const MobileHeader: React.FC = () => {
-  const { logout, user, isConnected, address } = useWeb3Auth();
+  const { logout, user, isConnected, address, balance, chainId, networkName } = useWeb3Auth();
 
   const handleLogout = async () => {
     try {
@@ -83,10 +83,10 @@ const MobileHeader: React.FC = () => {
         </div>
       </div>
       
-      {/* User Info Bar (Mobile) */}
+      {/* User Info Bar (Mobile) - opBNB Testnet */}
       {isConnected && user && (
         <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
-          <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center justify-between text-xs mb-1">
             <div className="flex items-center space-x-2 min-w-0 flex-1">
               <div className="flex items-center space-x-2 text-green-600">
                 <div className="w-2 h-2 bg-green-500 rounded-full"></div>
@@ -95,14 +95,50 @@ const MobileHeader: React.FC = () => {
               {user.typeOfLogin && (
                 <span className="text-blue-600">via {user.typeOfLogin}</span>
               )}
+              <span className={`font-medium ${chainId === 5611 ? 'text-green-600' : 'text-red-600'}`}>
+                {networkName || 'Unknown Network'}
+              </span>
             </div>
             <div className="text-gray-500 truncate max-w-32 ml-2">
               {user?.name || user?.email || 'Anonymous'}
             </div>
           </div>
-          {address && (
-            <div className="mt-1 text-xs text-gray-500 font-mono text-center">
-              {address.slice(0, 10)}...{address.slice(-8)}
+          
+          <div className="flex items-center justify-between text-xs">
+            <div className="flex items-center space-x-4">
+              {address && (
+                <div className="text-gray-500 font-mono">
+                  {address.slice(0, 10)}...{address.slice(-8)}
+                </div>
+              )}
+              <div className="text-gray-600">
+                {balance ? `${parseFloat(balance).toFixed(3)} BNB` : '0 BNB'}
+              </div>
+              {chainId && (
+                <div className="text-gray-500">
+                  Chain: {chainId}
+                </div>
+              )}
+            </div>
+            
+            <div className="flex items-center space-x-2">
+              {chainId === 5611 ? (
+                <button
+                  onClick={() => window.open('https://testnet.bnbchain.org/faucet-smart', '_blank')}
+                  className="text-blue-600 hover:text-blue-800 underline"
+                >
+                  Faucet
+                </button>
+              ) : chainId ? (
+                <span className="text-red-600 text-xs">Wrong Network</span>
+              ) : null}
+            </div>
+          </div>
+          
+          {/* Network Status Indicator */}
+          {chainId !== 5611 && chainId && (
+            <div className="mt-1 text-xs text-red-600 bg-red-50 px-2 py-1 rounded">
+              ⚠️ Please switch to opBNB Testnet (Chain ID: 5611)
             </div>
           )}
         </div>

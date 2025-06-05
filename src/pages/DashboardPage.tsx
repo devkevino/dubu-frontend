@@ -11,11 +11,12 @@ import {
   Settings
 } from 'lucide-react';
 import { StatsCard } from '../components/ui';
+import { NetworkSwitch, NetworkInfo } from '../components/ui/NetworkSwitch';
 import { useWeb3Auth } from '../providers/Web3AuthProvider';
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const { user, address, balance } = useWeb3Auth();
+  const { user, address, balance, chainId, networkName } = useWeb3Auth();
 
   const statsData = [
     {
@@ -114,7 +115,7 @@ const DashboardPage: React.FC = () => {
             )}
           </div>
           
-          {/* User Stats Bar */}
+          {/* User Stats Bar - opBNB Testnet */}
           {address && (
             <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <div className="flex items-center justify-between text-sm">
@@ -128,18 +129,41 @@ const DashboardPage: React.FC = () => {
                   {balance && (
                     <div>
                       <span className="text-blue-700 font-medium">Balance:</span>
-                      <span className="text-blue-800 ml-2">{parseFloat(balance).toFixed(4)} ETH</span>
+                      <span className="text-blue-800 ml-2">{parseFloat(balance).toFixed(4)} BNB</span>
                     </div>
                   )}
+                  <div>
+                    <span className="text-blue-700 font-medium">Network:</span>
+                    <span className={`ml-2 font-medium ${chainId === 5611 ? 'text-green-600' : 'text-red-600'}`}>
+                      {networkName || 'Unknown'}
+                    </span>
+                  </div>
                 </div>
                 <div className="flex items-center space-x-2 text-green-600">
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
                   <span className="font-medium">Connected</span>
                 </div>
               </div>
+              {/* Test BNB Faucet 링크 */}
+              {chainId === 5611 && (
+                <div className="mt-2 text-xs">
+                  <button
+                    onClick={() => window.open('https://testnet.bnbchain.org/faucet-smart', '_blank')}
+                    className="text-blue-600 hover:text-blue-800 underline"
+                  >
+                    Get Test BNB from Faucet →
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
+
+        {/* Network Status */}
+        <NetworkSwitch />
+
+        {/* Network Information Card */}
+        <NetworkInfo />
 
         {/* Stats Grid */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6 mb-6 md:mb-8">
@@ -293,6 +317,46 @@ const DashboardPage: React.FC = () => {
                 </div>
               </div>
             </button>
+          </div>
+        </div>
+
+        {/* opBNB Testnet Information Panel */}
+        <div className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl">
+          <div className="flex items-start space-x-4">
+            <div className="p-3 bg-blue-100 rounded-lg">
+              <TrendingUp className="w-6 h-6 text-blue-600" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Mining on opBNB Testnet</h3>
+              <p className="text-gray-600 mb-4">
+                Experience fast and low-cost transactions on Binance's opBNB layer-2 solution. 
+                Perfect for testing mining operations with minimal fees.
+              </p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span className="text-gray-700">Low Gas Fees</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                  <span className="text-gray-700">Fast Transactions</span>
+                </div>
+                <div className="flex items-center space-x-2">
+                  <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                  <span className="text-gray-700">EVM Compatible</span>
+                </div>
+              </div>
+              {chainId !== 5611 && (
+                <div className="mt-4">
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors text-sm"
+                  >
+                    Refresh to Check Network
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

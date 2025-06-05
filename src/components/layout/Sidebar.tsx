@@ -70,7 +70,7 @@ const MenuItem: React.FC<MenuItemProps> = ({
 const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout, user, isConnected, address } = useWeb3Auth();
+  const { logout, user, isConnected, address, balance, chainId, networkName } = useWeb3Auth();
 
   const handleLogout = async () => {
     try {
@@ -139,7 +139,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
           {!collapsed && (
             <div>
               <h1 className="text-lg font-bold text-gray-900">MineCore</h1>
-              <p className="text-xs text-gray-500">Mining Platform</p>
+              <p className="text-xs text-gray-500">opBNB Testnet</p>
             </div>
           )}
         </div>
@@ -206,10 +206,10 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
           )}
         </div>
 
-        {/* Connection Status */}
+        {/* Connection Status & Network Info */}
         {!collapsed && (
           <div className="mb-3 px-2">
-            <div className={`flex items-center justify-between text-xs`}>
+            <div className={`flex items-center justify-between text-xs mb-2`}>
               <div className={`flex items-center space-x-2 ${
                 isConnected ? 'text-green-600' : 'text-gray-500'
               }`}>
@@ -224,6 +224,41 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
                 </div>
               )}
             </div>
+            
+            {/* Network Information */}
+            {isConnected && (
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Network:</span>
+                  <span className={`font-medium ${chainId === 5611 ? 'text-green-600' : 'text-red-600'}`}>
+                    {networkName || 'Unknown'}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Chain ID:</span>
+                  <span className="text-gray-700">{chainId || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Balance:</span>
+                  <span className="text-gray-700">
+                    {balance ? `${parseFloat(balance).toFixed(4)} BNB` : '0 BNB'}
+                  </span>
+                </div>
+                {chainId === 5611 && (
+                  <button
+                    onClick={() => window.open('https://testnet.bnbchain.org/faucet-smart', '_blank')}
+                    className="w-full text-xs text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 py-1 px-2 rounded transition-colors"
+                  >
+                    Get Test BNB
+                  </button>
+                )}
+                {chainId !== 5611 && chainId && (
+                  <div className="text-xs text-red-600 bg-red-50 py-1 px-2 rounded">
+                    Wrong Network
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
@@ -261,6 +296,12 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
           <div className="w-12 h-1 bg-gray-200 rounded-full mx-auto">
             <div className="h-full bg-green-500 rounded-full animate-pulse" style={{ width: '60%' }}></div>
           </div>
+          {chainId === 5611 && (
+            <div className="w-2 h-2 bg-green-500 rounded-full mx-auto mt-1"></div>
+          )}
+          {chainId !== 5611 && chainId && (
+            <div className="w-2 h-2 bg-red-500 rounded-full mx-auto mt-1"></div>
+          )}
         </div>
       )}
     </div>

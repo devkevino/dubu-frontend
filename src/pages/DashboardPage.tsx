@@ -13,6 +13,7 @@ import {
 import { StatsCard } from '../components/ui';
 import { NetworkSwitch, NetworkInfo } from '../components/ui/NetworkSwitch';
 import { useWeb3Auth } from '../providers/Web3AuthProvider';
+import { CURRENT_NETWORK } from '../config/networks';
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
@@ -115,7 +116,7 @@ const DashboardPage: React.FC = () => {
             )}
           </div>
           
-          {/* User Stats Bar - opBNB Testnet */}
+          {/* User Stats Bar - Dynamic Network */}
           {address && (
             <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
               <div className="flex items-center justify-between text-sm">
@@ -134,7 +135,7 @@ const DashboardPage: React.FC = () => {
                   )}
                   <div>
                     <span className="text-blue-700 font-medium">Network:</span>
-                    <span className={`ml-2 font-medium ${chainId === 5611 ? 'text-green-600' : 'text-red-600'}`}>
+                    <span className={`ml-2 font-medium ${chainId === CURRENT_NETWORK.chainId ? 'text-green-600' : 'text-red-600'}`}>
                       {networkName || 'Unknown'}
                     </span>
                   </div>
@@ -145,10 +146,10 @@ const DashboardPage: React.FC = () => {
                 </div>
               </div>
               {/* Test BNB Faucet 링크 */}
-              {chainId === 5611 && (
+              {chainId === CURRENT_NETWORK.chainId && CURRENT_NETWORK.faucetUrl && (
                 <div className="mt-2 text-xs">
                   <button
-                    onClick={() => window.open('https://testnet.bnbchain.org/faucet-smart', '_blank')}
+                    onClick={() => window.open(CURRENT_NETWORK.faucetUrl, '_blank')}
                     className="text-blue-600 hover:text-blue-800 underline"
                   >
                     Get Test BNB from Faucet →
@@ -320,17 +321,17 @@ const DashboardPage: React.FC = () => {
           </div>
         </div>
 
-        {/* opBNB Testnet Information Panel */}
+        {/* Network Information Panel */}
         <div className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl">
           <div className="flex items-start space-x-4">
             <div className="p-3 bg-blue-100 rounded-lg">
               <TrendingUp className="w-6 h-6 text-blue-600" />
             </div>
             <div className="flex-1">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">Mining on opBNB Testnet</h3>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Mining on {CURRENT_NETWORK.displayName}</h3>
               <p className="text-gray-600 mb-4">
-                Experience fast and low-cost transactions on Binance's opBNB layer-2 solution. 
-                Perfect for testing mining operations with minimal fees.
+                Experience fast and low-cost transactions on Binance's blockchain solution. 
+                {CURRENT_NETWORK.faucetUrl ? ' Test your mining operations with free test tokens.' : ' Secure and efficient mining operations.'}
               </p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                 <div className="flex items-center space-x-2">
@@ -346,7 +347,7 @@ const DashboardPage: React.FC = () => {
                   <span className="text-gray-700">EVM Compatible</span>
                 </div>
               </div>
-              {chainId !== 5611 && (
+              {chainId !== CURRENT_NETWORK.chainId && (
                 <div className="mt-4">
                   <button
                     onClick={() => window.location.reload()}

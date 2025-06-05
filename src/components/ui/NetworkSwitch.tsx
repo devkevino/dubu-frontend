@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { AlertTriangle, RefreshCw, CheckCircle, ExternalLink, Wifi, WifiOff } from 'lucide-react';
 import { useWeb3Auth } from '../../providers/Web3AuthProvider';
-import { OPBNB_TESTNET } from '../../lib/web3auth/config';
+import { CURRENT_NETWORK } from '../../config/networks';
 import { Button } from './Button';
 
 export const NetworkSwitch: React.FC = () => {
@@ -22,7 +22,7 @@ export const NetworkSwitch: React.FC = () => {
     );
   }
 
-  const isCorrectNetwork = chainId === OPBNB_TESTNET.chainId;
+  const isCorrectNetwork = chainId === CURRENT_NETWORK.chainId;
 
   const handleSwitchNetwork = async () => {
     setIsSwitching(true);
@@ -49,20 +49,22 @@ export const NetworkSwitch: React.FC = () => {
             <div>
               <p className="text-green-800 font-medium flex items-center space-x-2">
                 <Wifi className="w-4 h-4" />
-                <span>Connected to opBNB Testnet</span>
+                <span>Connected to {CURRENT_NETWORK.displayName}</span>
               </p>
               <p className="text-green-600 text-sm">Chain ID: {chainId} • Ready for mining</p>
             </div>
           </div>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={getTestBNB}
-            icon={ExternalLink}
-            className="text-green-700 border-green-300 hover:bg-green-100"
-          >
-            Get Test BNB
-          </Button>
+          {CURRENT_NETWORK.faucetUrl && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={getTestBNB}
+              icon={ExternalLink}
+              className="text-green-700 border-green-300 hover:bg-green-100"
+            >
+              Get Test BNB
+            </Button>
+          )}
         </div>
       </div>
     );
@@ -77,7 +79,7 @@ export const NetworkSwitch: React.FC = () => {
           <p className="text-yellow-700 text-sm mt-1">
             Currently connected to <strong>{networkName}</strong> (Chain ID: {chainId}).
             <br />
-            Switch to opBNB Testnet for full functionality and optimal mining experience.
+            Switch to {CURRENT_NETWORK.displayName} for full functionality and optimal mining experience.
           </p>
           
           <div className="mt-3 space-y-2">
@@ -90,15 +92,15 @@ export const NetworkSwitch: React.FC = () => {
                 icon={RefreshCw}
                 className="bg-yellow-600 hover:bg-yellow-700"
               >
-                Switch to opBNB Testnet
+                Switch to {CURRENT_NETWORK.displayName}
               </Button>
               <a
-                href="https://docs.bnbchain.org/opbnb-docs/docs/tutorials/opbnb-testnet"
+                href="https://academy.binance.com/en/articles/connecting-metamask-to-binance-smart-chain"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-yellow-700 text-sm hover:text-yellow-900 underline flex items-center"
               >
-                Learn more about opBNB
+                Learn more about BSC
                 <ExternalLink className="w-3 h-3 ml-1" />
               </a>
             </div>
@@ -114,8 +116,8 @@ export const NetworkSwitch: React.FC = () => {
                 </div>
                 <div>
                   <p className="text-yellow-700 font-medium">Recommended Network</p>
-                  <p className="text-yellow-600">opBNB Testnet</p>
-                  <p className="text-yellow-600">Chain ID: 5611</p>
+                  <p className="text-yellow-600">{CURRENT_NETWORK.displayName}</p>
+                  <p className="text-yellow-600">Chain ID: {CURRENT_NETWORK.chainId}</p>
                 </div>
               </div>
             </div>
@@ -161,14 +163,14 @@ export const NetworkInfo: React.FC = () => {
       <div className="mt-4 pt-4 border-t border-gray-200">
         <div className="flex items-center justify-between text-sm">
           <div className="flex items-center space-x-2">
-            <div className={`w-2 h-2 rounded-full ${chainId === 5611 ? 'bg-green-500' : 'bg-red-500'}`}></div>
+            <div className={`w-2 h-2 rounded-full ${chainId === CURRENT_NETWORK.chainId ? 'bg-green-500' : 'bg-red-500'}`}></div>
             <span className="text-gray-600">
-              {chainId === 5611 ? 'Optimal Network' : 'Suboptimal Network'}
+              {chainId === CURRENT_NETWORK.chainId ? 'Optimal Network' : 'Suboptimal Network'}
             </span>
           </div>
           <div className="flex items-center space-x-4">
             <a
-              href={chainId === 5611 ? 'https://opbnb-testnet.bscscan.com' : '#'}
+              href={CURRENT_NETWORK.blockExplorer}
               target="_blank"
               rel="noopener noreferrer"
               className="text-blue-600 hover:text-blue-800 underline flex items-center"
@@ -176,9 +178,9 @@ export const NetworkInfo: React.FC = () => {
               Block Explorer
               <ExternalLink className="w-3 h-3 ml-1" />
             </a>
-            {chainId === 5611 && (
+            {chainId === CURRENT_NETWORK.chainId && CURRENT_NETWORK.faucetUrl && (
               <a
-                href="https://testnet.bnbchain.org/faucet-smart"
+                href={CURRENT_NETWORK.faucetUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-green-600 hover:text-green-800 underline flex items-center"

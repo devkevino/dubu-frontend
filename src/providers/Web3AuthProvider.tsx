@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, ReactNode } from 'react';
 import { WALLET_ADAPTERS, ADAPTER_EVENTS, IProvider } from "@web3auth/base";
 import Web3 from "web3";
-import web3auth, { OPBNB_TESTNET } from '../lib/web3auth/config';
+import web3auth, { CURRENT_NETWORK } from '../lib/web3auth/config';
 import { Web3AuthContextType, Web3AuthState, Web3AuthUser, LoginProvider } from '../types/web3auth.types';
 
 const Web3AuthContext = createContext<Web3AuthContextType | null>(null);
@@ -25,12 +25,12 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
   useEffect(() => {
     const init = async () => {
       try {
-        console.log('🔄 [Web3Auth] Initializing for opBNB Testnet...');
+        console.log(`🔄 [Web3Auth] Initializing for ${CURRENT_NETWORK.displayName}...`);
         setState((prev: Web3AuthState) => ({ ...prev, isLoading: true }));
         
         // Web3Auth 초기화
         await web3auth.initModal();
-        console.log('✅ [Web3Auth] Modal initialized for opBNB Testnet');
+        console.log(`✅ [Web3Auth] Modal initialized for ${CURRENT_NETWORK.displayName}`);
         
         // 기존 연결 확인
         if (web3auth.connected) {
@@ -41,8 +41,8 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
           setState((prev: Web3AuthState) => ({ 
             ...prev, 
             isLoading: false,
-            networkName: OPBNB_TESTNET.name,
-            chainId: OPBNB_TESTNET.chainId,
+            networkName: CURRENT_NETWORK.displayName,
+            chainId: CURRENT_NETWORK.chainId,
           }));
         }
       } catch (error) {
@@ -68,13 +68,13 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
         provider: null,
         address: null,
         balance: null,
-        chainId: OPBNB_TESTNET.chainId,
-        networkName: OPBNB_TESTNET.name,
+        chainId: CURRENT_NETWORK.chainId,
+        networkName: CURRENT_NETWORK.displayName,
       }));
     };
 
     const handleConnecting = () => {
-      console.log('⏳ [Web3Auth] Connecting to opBNB Testnet...');
+      console.log(`⏳ [Web3Auth] Connecting to ${CURRENT_NETWORK.displayName}...`);
       setState((prev: Web3AuthState) => ({ ...prev, isLoading: true }));
     };
 
@@ -91,7 +91,7 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
 
   const updateUserInfo = async () => {
     try {
-      console.log('📊 [Web3Auth] Updating user info for opBNB Testnet...');
+      console.log(`📊 [Web3Auth] Updating user info for ${CURRENT_NETWORK.displayName}...`);
       const user = await getUserInfo();
       const provider = web3auth.provider;
       const accounts = await getAccounts();
@@ -132,9 +132,9 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
       }
 
       // 네트워크 체크
-      if (chainId !== OPBNB_TESTNET.chainId) {
-        console.warn('⚠️ [Web3Auth] Connected to wrong network. Expected opBNB Testnet.');
-        await switchToOpBNBTestnet();
+      if (chainId !== CURRENT_NETWORK.chainId) {
+        console.warn(`⚠️ [Web3Auth] Connected to wrong network. Expected ${CURRENT_NETWORK.displayName}.`);
+        await switchToCurrentNetwork();
       }
     } catch (error) {
       console.error('❌ [Web3Auth] Error updating user info:', error);
@@ -196,8 +196,8 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
         provider: null,
         address: null,
         balance: null,
-        chainId: OPBNB_TESTNET.chainId,
-        networkName: OPBNB_TESTNET.name,
+        chainId: CURRENT_NETWORK.chainId,
+        networkName: CURRENT_NETWORK.displayName,
       });
     } catch (error) {
       console.error('❌ [Web3Auth] Logout error:', error);
@@ -258,8 +258,8 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
   const getNetworkName = async (): Promise<string> => {
     try {
       const chainId = await getChainId();
-      if (chainId === OPBNB_TESTNET.chainId) {
-        return OPBNB_TESTNET.name;
+      if (chainId === CURRENT_NETWORK.chainId) {
+        return CURRENT_NETWORK.displayName;
       }
       return `Unknown Network (${chainId})`;
     } catch (error) {
@@ -268,7 +268,7 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
     }
   };
 
-  const switchToOpBNBTestnet = async (): Promise<boolean> => {
+  const switchToCurrentNetwork = async (): Promise<boolean> => {
     try {
       if (!web3auth.provider) {
         throw new Error('Provider not available');
@@ -277,10 +277,10 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
       // MetaMask 스타일의 네트워크 전환 요청
       await (web3auth.provider as any).request({
         method: 'wallet_switchEthereumChain',
-        params: [{ chainId: OPBNB_TESTNET.chainIdHex }],
+        params: [{ chainId: CURRENT_NETWORK.chainIdHex }],
       });
 
-      console.log('✅ [Web3Auth] Switched to opBNB Testnet');
+      console.log(`✅ [Web3Auth] Switched to ${CURRENT_NETWORK.displayName}`);
       return true;
     } catch (switchError: any) {
       // 네트워크가 추가되지 않은 경우 추가 시도
@@ -289,22 +289,22 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
           await (web3auth.provider as any).request({
             method: 'wallet_addEthereumChain',
             params: [{
-              chainId: OPBNB_TESTNET.chainIdHex,
-              chainName: OPBNB_TESTNET.name,
-              rpcUrls: [OPBNB_TESTNET.rpcUrl],
-              blockExplorerUrls: [OPBNB_TESTNET.blockExplorer],
-              nativeCurrency: OPBNB_TESTNET.nativeCurrency,
+              chainId: CURRENT_NETWORK.chainIdHex,
+              chainName: CURRENT_NETWORK.displayName,
+              rpcUrls: [CURRENT_NETWORK.rpcUrl],
+              blockExplorerUrls: [CURRENT_NETWORK.blockExplorer],
+              nativeCurrency: CURRENT_NETWORK.nativeCurrency,
             }],
           });
 
-          console.log('✅ [Web3Auth] Added and switched to opBNB Testnet');
+          console.log(`✅ [Web3Auth] Added and switched to ${CURRENT_NETWORK.displayName}`);
           return true;
         } catch (addError) {
-          console.error('❌ [Web3Auth] Failed to add opBNB Testnet:', addError);
+          console.error(`❌ [Web3Auth] Failed to add ${CURRENT_NETWORK.displayName}:`, addError);
           return false;
         }
       } else {
-        console.error('❌ [Web3Auth] Failed to switch to opBNB Testnet:', switchError);
+        console.error(`❌ [Web3Auth] Failed to switch to ${CURRENT_NETWORK.displayName}:`, switchError);
         return false;
       }
     }
@@ -325,9 +325,13 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
     }
   };
 
-  // opBNB Testnet Faucet 링크 제공
+  // Test BNB Faucet 링크 제공
   const getTestBNB = () => {
-    window.open(OPBNB_TESTNET.faucetUrl, '_blank');
+    if (CURRENT_NETWORK.faucetUrl) {
+      window.open(CURRENT_NETWORK.faucetUrl, '_blank');
+    } else {
+      console.warn('No faucet URL available for current network');
+    }
   };
 
   const contextValue: Web3AuthContextType = {
@@ -339,7 +343,7 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
     getBalance,
     getChainId,
     getNetworkName,
-    switchToOpBNBTestnet,
+    switchToOpBNBTestnet: switchToCurrentNetwork, // Legacy compatibility
     signMessage,
     getTestBNB,
   };

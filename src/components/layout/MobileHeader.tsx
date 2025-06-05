@@ -7,6 +7,7 @@ import {
   ChevronDown
 } from 'lucide-react';
 import { useWeb3Auth } from '../../providers/Web3AuthProvider';
+import { CURRENT_NETWORK } from '../../config/networks';
 
 const MobileHeader: React.FC = () => {
   const { logout, user, isConnected, address, balance, chainId, networkName } = useWeb3Auth();
@@ -83,7 +84,7 @@ const MobileHeader: React.FC = () => {
         </div>
       </div>
       
-      {/* User Info Bar (Mobile) - opBNB Testnet */}
+      {/* User Info Bar (Mobile) - Dynamic Network */}
       {isConnected && user && (
         <div className="px-4 py-2 bg-gray-50 border-b border-gray-200">
           <div className="flex items-center justify-between text-xs mb-1">
@@ -95,7 +96,7 @@ const MobileHeader: React.FC = () => {
               {user.typeOfLogin && (
                 <span className="text-blue-600">via {user.typeOfLogin}</span>
               )}
-              <span className={`font-medium ${chainId === 5611 ? 'text-green-600' : 'text-red-600'}`}>
+              <span className={`font-medium ${chainId === CURRENT_NETWORK.chainId ? 'text-green-600' : 'text-red-600'}`}>
                 {networkName || 'Unknown Network'}
               </span>
             </div>
@@ -122,9 +123,9 @@ const MobileHeader: React.FC = () => {
             </div>
             
             <div className="flex items-center space-x-2">
-              {chainId === 5611 ? (
+              {chainId === CURRENT_NETWORK.chainId && CURRENT_NETWORK.faucetUrl ? (
                 <button
-                  onClick={() => window.open('https://testnet.bnbchain.org/faucet-smart', '_blank')}
+                  onClick={() => window.open(CURRENT_NETWORK.faucetUrl, '_blank')}
                   className="text-blue-600 hover:text-blue-800 underline"
                 >
                   Faucet
@@ -136,9 +137,9 @@ const MobileHeader: React.FC = () => {
           </div>
           
           {/* Network Status Indicator */}
-          {chainId !== 5611 && chainId && (
+          {chainId !== CURRENT_NETWORK.chainId && chainId && (
             <div className="mt-1 text-xs text-red-600 bg-red-50 px-2 py-1 rounded">
-              ⚠️ Please switch to opBNB Testnet (Chain ID: 5611)
+              ⚠️ Please switch to {CURRENT_NETWORK.displayName} (Chain ID: {CURRENT_NETWORK.chainId})
             </div>
           )}
         </div>

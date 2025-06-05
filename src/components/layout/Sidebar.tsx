@@ -13,6 +13,7 @@ import {
   User
 } from 'lucide-react';
 import { useWeb3Auth } from '../../providers/Web3AuthProvider';
+import { CURRENT_NETWORK } from '../../config/networks';
 
 interface SidebarProps {
   collapsed: boolean;
@@ -139,7 +140,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
           {!collapsed && (
             <div>
               <h1 className="text-lg font-bold text-gray-900">MineCore</h1>
-              <p className="text-xs text-gray-500">opBNB Testnet</p>
+              <p className="text-xs text-gray-500">{CURRENT_NETWORK.displayName}</p>
             </div>
           )}
         </div>
@@ -230,7 +231,7 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
               <div className="space-y-1">
                 <div className="flex justify-between text-xs">
                   <span className="text-gray-500">Network:</span>
-                  <span className={`font-medium ${chainId === 5611 ? 'text-green-600' : 'text-red-600'}`}>
+                  <span className={`font-medium ${chainId === CURRENT_NETWORK.chainId ? 'text-green-600' : 'text-red-600'}`}>
                     {networkName || 'Unknown'}
                   </span>
                 </div>
@@ -244,15 +245,15 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
                     {balance ? `${parseFloat(balance).toFixed(4)} BNB` : '0 BNB'}
                   </span>
                 </div>
-                {chainId === 5611 && (
+                {chainId === CURRENT_NETWORK.chainId && CURRENT_NETWORK.faucetUrl && (
                   <button
-                    onClick={() => window.open('https://testnet.bnbchain.org/faucet-smart', '_blank')}
+                    onClick={() => window.open(CURRENT_NETWORK.faucetUrl, '_blank')}
                     className="w-full text-xs text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 py-1 px-2 rounded transition-colors"
                   >
                     Get Test BNB
                   </button>
                 )}
-                {chainId !== 5611 && chainId && (
+                {chainId !== CURRENT_NETWORK.chainId && chainId && (
                   <div className="text-xs text-red-600 bg-red-50 py-1 px-2 rounded">
                     Wrong Network
                   </div>
@@ -296,10 +297,10 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
           <div className="w-12 h-1 bg-gray-200 rounded-full mx-auto">
             <div className="h-full bg-green-500 rounded-full animate-pulse" style={{ width: '60%' }}></div>
           </div>
-          {chainId === 5611 && (
+          {chainId === CURRENT_NETWORK.chainId && (
             <div className="w-2 h-2 bg-green-500 rounded-full mx-auto mt-1"></div>
           )}
-          {chainId !== 5611 && chainId && (
+          {chainId !== CURRENT_NETWORK.chainId && chainId && (
             <div className="w-2 h-2 bg-red-500 rounded-full mx-auto mt-1"></div>
           )}
         </div>

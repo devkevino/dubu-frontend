@@ -105,15 +105,6 @@ const DashboardPage: React.FC = () => {
                 </p>
               )}
             </div>
-            {user?.profileImage && (
-              <div className="hidden md:block">
-                <img 
-                  src={user.profileImage} 
-                  alt="Profile" 
-                  className="w-12 h-12 rounded-full object-cover border-2 border-blue-100"
-                />
-              </div>
-            )}
           </div>
           
           {/* User Stats Bar - Dynamic Network */}

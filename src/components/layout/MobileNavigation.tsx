@@ -4,7 +4,8 @@ import {
   LayoutDashboard,
   Zap, 
   Users, 
-  Wallet
+  Wallet,
+  CreditCard
 } from 'lucide-react';
 
 interface NavItemProps {
@@ -14,33 +15,19 @@ interface NavItemProps {
   onClick: () => void;
 }
 
-const NavItem: React.FC<NavItemProps> = ({ 
-  icon: Icon, 
-  label, 
-  isActive, 
-  onClick 
-}) => {
-  return (
-    <button
-      onClick={onClick}
-      className={`
-        flex flex-col items-center justify-center py-2 px-3 transition-colors duration-200
-        ${isActive 
-          ? 'text-blue-600' 
-          : 'text-gray-400 hover:text-gray-600'
-        }
-      `}
-    >
-      <Icon className={`w-6 h-6 mb-1 ${isActive ? 'text-blue-600' : 'text-gray-400'}`} />
-      <span className={`text-xs font-medium ${isActive ? 'text-blue-600' : 'text-gray-500'}`}>
-        {label}
-      </span>
-      {isActive && (
-        <div className="absolute top-0 left-1/2 transform -translate-x-1/2 w-8 h-1 bg-blue-600 rounded-b-lg"></div>
-      )}
-    </button>
-  );
-};
+const NavItem: React.FC<NavItemProps> = ({ icon: Icon, label, isActive, onClick }) => (
+  <button
+    onClick={onClick}
+    className={`flex flex-col items-center justify-center py-2 px-1 rounded-lg transition-colors w-full ${
+      isActive 
+        ? 'text-blue-600 bg-blue-50' 
+        : 'text-gray-600 hover:text-gray-900'
+    }`}
+  >
+    <Icon className="h-5 w-5 mb-1" />
+    <span className="text-xs font-medium">{label}</span>
+  </button>
+);
 
 const MobileNavigation: React.FC = () => {
   const location = useLocation();
@@ -58,6 +45,11 @@ const MobileNavigation: React.FC = () => {
       path: '/earn'
     },
     {
+      icon: CreditCard,
+      label: 'Card',
+      path: '/card'
+    },
+    {
       icon: Users,
       label: 'Team',
       path: '/team'
@@ -70,10 +62,10 @@ const MobileNavigation: React.FC = () => {
   ];
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 z-30">
+    <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-gray-200 md:hidden z-20">
       <nav className="flex justify-around items-center px-2 py-1">
         {menuItems.map((item) => (
-          <div key={item.path} className="relative flex-1 max-w-20">
+          <div key={item.path} className="relative flex-1 max-w-16">
             <NavItem
               icon={item.icon}
               label={item.label}

@@ -6,7 +6,6 @@ import {
   Zap, 
   Users, 
   Wallet,
-  CreditCard,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -14,22 +13,88 @@ import {
   User
 } from 'lucide-react';
 import { useWeb3Auth } from '../../providers/Web3AuthProvider';
+import { CURRENT_NETWORK } from '../../config/networks';
 
 interface SidebarProps {
-  isCollapsed: boolean;
-  setIsCollapsed: (collapsed: boolean) => void;
+  collapsed: boolean;
+  onToggle: () => void;
 }
 
-interface MenuItem {
+interface MenuItemProps {
   icon: React.ElementType;
   label: string;
-  path: string;
+  isActive: boolean;
+  collapsed: boolean;
+  onClick: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setIsCollapsed }) => {
+const MenuItem: React.FC<MenuItemProps> = ({ 
+  icon: Icon, 
+  label, 
+  isActive, 
+  collapsed, 
+  onClick 
+}) => {
+  return (
+    <button
+      onClick={onClick}
+      className={`
+        w-full flex items-center px-3 py-3 rounded-lg transition-all duration-200 group relative
+        ${isActive 
+          ? 'bg-blue-100 text-blue-700 border-r-2 border-blue-600' 
+          : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+        }
+        ${collapsed ? 'justify-center' : 'justify-start'}
+      `}
+    >
+      <Icon className={`w-5 h-5 ${collapsed ? '' : 'mr-3'} flex-shrink-0`} />
+      
+      <span 
+        className={`
+          font-medium transition-all duration-300 overflow-hidden
+          ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}
+        `}
+      >
+        {label}
+      </span>
+
+      {/* Tooltip for collapsed state */}
+      {collapsed && (
+        <div className="absolute left-14 bg-gray-900 text-white px-2 py-1 rounded text-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
+          {label}
+        </div>
+      )}
+    </button>
+  );
+};
+
+const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { logout, user } = useWeb3Auth();
+  const { logout, user, isConnected, address, balance, chainId, networkName } = useWeb3Auth();
+
+  const handleLogout = useCallback(async () => {
+    try {
+      console.log('🚪 Starting logout process...');
+      console.log('📊 Current auth state before logout:', { isConnected, user });
+      
+      await logout();
+      
+      console.log('✅ Logout completed, redirecting...');
+      console.log('🧹 localStorage after logout:', {
+        isAuthenticated: localStorage.getItem('isAuthenticated'),
+        userData: localStorage.getItem('userData'),
+        loginProvider: localStorage.getItem('loginProvider')
+      });
+      
+      // React Router를 사용하여 안전하게 이동
+      navigate('/signin', { replace: true });
+    } catch (error) {
+      console.error('❌ Logout error:', error);
+      // 에러가 발생해도 signin 페이지로 이동
+      navigate('/signin', { replace: true });
+    }
+  }, [logout, navigate, isConnected, user]);
 
   const menuItems = [
     {
@@ -53,112 +118,194 @@ const Sidebar: React.FC<SidebarProps> = ({ isCollapsed, setIsCollapsed }) => {
       path: '/wallet'
     },
     {
-      icon: CreditCard,
-      label: 'Card',
-      path: '/card'
-    },
-    {
       icon: Settings,
       label: 'Settings',
       path: '/settings'
     }
   ];
 
-  const isActive = (path: string): boolean => {
-    return location.pathname === path;
-  };
-
-  const handleLogout = useCallback(async () => {
-    try {
-      await logout();
-      navigate('/signin');
-    } catch (error) {
-      console.error('Logout error:', error);
-    }
-  }, [logout, navigate]);
-
-  const handleNavigation = useCallback((path: string) => {
-    navigate(path);
-  }, [navigate]);
-
   return (
-    <aside
-      className={`fixed left-0 top-0 h-full bg-white border-r border-gray-200 z-20 transition-all duration-300 ${
-        isCollapsed ? 'w-16' : 'w-64'
-      }`}
+    <div 
+      className={`
+        fixed left-0 top-0 h-full bg-white border-r border-gray-200 transition-all duration-300 z-40
+        ${collapsed ? 'w-16' : 'w-64'}
+      `}
     >
-      <div className="flex flex-col h-full">
-        {/* Header */}
-        <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200">
-          <div className="flex items-center space-x-3">
-            <TrendingUp className="h-8 w-8 text-blue-600" />
-            {!isCollapsed && (
-              <span className="text-xl font-bold text-gray-800">MineCore</span>
-            )}
+      {/* Header */}
+      <div className="flex items-center justify-between p-4 border-b border-gray-200">
+        <div className={`flex items-center space-x-3 ${collapsed ? 'justify-center w-full' : ''}`}>
+          <div className="flex items-center justify-center w-8 h-8 bg-gradient-to-r from-blue-600 to-purple-600 rounded-lg">
+            <TrendingUp className="w-5 h-5 text-white" />
           </div>
-          <button
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className="p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
-          >
-            {isCollapsed ? (
-              <ChevronRight className="h-5 w-5 text-gray-600" />
-            ) : (
-              <ChevronLeft className="h-5 w-5 text-gray-600" />
-            )}
-          </button>
+          {!collapsed && (
+            <div>
+              <h1 className="text-lg font-bold text-gray-900">MineCore</h1>
+              <p className="text-xs text-gray-500">{CURRENT_NETWORK.displayName}</p>
+            </div>
+          )}
+        </div>
+        
+        {/* Toggle Button */}
+        <button
+          onClick={onToggle}
+          className={`
+            p-1.5 rounded-lg text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors
+            ${collapsed ? 'absolute -right-3 top-4 bg-white border border-gray-200 shadow-sm' : ''}
+          `}
+        >
+          {collapsed ? (
+            <ChevronRight className="w-4 h-4" />
+          ) : (
+            <ChevronLeft className="w-4 h-4" />
+          )}
+        </button>
+      </div>
+
+      {/* Navigation Menu */}
+      <nav className="flex-1 px-4 py-4 space-y-2">
+        {menuItems.map((item) => (
+          <MenuItem
+            key={item.path}
+            icon={item.icon}
+            label={item.label}
+            isActive={location.pathname === item.path}
+            collapsed={collapsed}
+            onClick={() => navigate(item.path)}
+          />
+        ))}
+      </nav>
+
+      {/* User Profile Section */}
+      <div className="border-t border-gray-200 p-4">
+        {/* User Info */}
+        <div className={`flex items-center ${collapsed ? 'justify-center' : 'space-x-3'} mb-3`}>
+          {user?.profileImage ? (
+            <img 
+              src={user.profileImage} 
+              alt="Profile" 
+              className="w-8 h-8 rounded-full object-cover"
+            />
+          ) : (
+            <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+              <User className="w-4 h-4 text-blue-600" />
+            </div>
+          )}
+          {!collapsed && (
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900 truncate">
+                {user?.name || 'Anonymous User'}
+              </p>
+              <p className="text-xs text-gray-500 truncate">
+                {user?.email || 'No email'}
+              </p>
+              {user?.typeOfLogin && (
+                <p className="text-xs text-blue-600 truncate">
+                  via {user.typeOfLogin}
+                </p>
+              )}
+            </div>
+          )}
         </div>
 
-        {/* User Info */}
-        {user && (
-          <div className={`px-4 py-4 border-b border-gray-200 ${isCollapsed ? 'px-3' : ''}`}>
-            <div className="flex items-center space-x-3">
-              <div className="w-10 h-10 bg-gradient-to-br from-blue-500 to-purple-600 rounded-full flex items-center justify-center">
-                <User className="h-5 w-5 text-white" />
+        {/* Connection Status & Network Info */}
+        {!collapsed && (
+          <div className="mb-3 px-2">
+            <div className={`flex items-center justify-between text-xs mb-2`}>
+              <div className={`flex items-center space-x-2 ${
+                isConnected ? 'text-green-600' : 'text-gray-500'
+              }`}>
+                <div className={`w-2 h-2 rounded-full ${
+                  isConnected ? 'bg-green-500' : 'bg-gray-400'
+                }`}></div>
+                <span>{isConnected ? 'Connected' : 'Disconnected'}</span>
               </div>
-              {!isCollapsed && (
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 truncate">
-                    {user.name || 'User'}
-                  </p>
-                  <p className="text-xs text-gray-500 truncate">
-                    {user.email || 'Connected'}
-                  </p>
+              {address && (
+                <div className="text-gray-500 font-mono">
+                  {address.slice(0, 6)}...{address.slice(-4)}
                 </div>
               )}
             </div>
+            
+            {/* Network Information */}
+            {isConnected && (
+              <div className="space-y-1">
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Network:</span>
+                  <span className={`font-medium ${chainId === CURRENT_NETWORK.chainId ? 'text-green-600' : 'text-red-600'}`}>
+                    {networkName || 'Unknown'}
+                  </span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Chain ID:</span>
+                  <span className="text-gray-700">{chainId || 'N/A'}</span>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-500">Balance:</span>
+                  <span className="text-gray-700">
+                    {balance ? `${parseFloat(balance).toFixed(4)} BNB` : '0 BNB'}
+                  </span>
+                </div>
+                {chainId === CURRENT_NETWORK.chainId && CURRENT_NETWORK.faucetUrl && (
+                  <button
+                    onClick={() => window.open(CURRENT_NETWORK.faucetUrl, '_blank')}
+                    className="w-full text-xs text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 py-1 px-2 rounded transition-colors"
+                  >
+                    Get Test BNB
+                  </button>
+                )}
+                {chainId !== CURRENT_NETWORK.chainId && chainId && (
+                  <div className="text-xs text-red-600 bg-red-50 py-1 px-2 rounded">
+                    Wrong Network
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         )}
 
-        {/* Navigation */}
-        <nav className="flex-1 px-3 py-4 space-y-1 overflow-y-auto">
-          {menuItems.map((item) => (
-            <button
-              key={item.path}
-              onClick={() => handleNavigation(item.path)}
-              className={`w-full flex items-center px-3 py-2.5 text-sm font-medium rounded-lg transition-colors ${
-                isActive(item.path)
-                  ? 'bg-blue-50 text-blue-600'
-                  : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-              }`}
-            >
-              <item.icon className={`h-5 w-5 ${isCollapsed ? 'mx-auto' : 'mr-3'}`} />
-              {!isCollapsed && <span>{item.label}</span>}
-            </button>
-          ))}
-        </nav>
-
         {/* Logout Button */}
-        <div className="p-3 border-t border-gray-200">
-          <button
-            onClick={handleLogout}
-            className="w-full flex items-center px-3 py-2.5 text-sm font-medium text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+        <button
+          onClick={handleLogout}
+          className={`
+            w-full flex items-center px-3 py-2 text-sm text-red-600 hover:bg-red-50 rounded-lg transition-colors group relative
+            ${collapsed ? 'justify-center' : 'justify-start'}
+          `}
+        >
+          <LogOut className={`w-4 h-4 ${collapsed ? '' : 'mr-3'} flex-shrink-0`} />
+          
+          <span 
+            className={`
+              transition-all duration-300 overflow-hidden
+              ${collapsed ? 'w-0 opacity-0' : 'w-auto opacity-100'}
+            `}
           >
-            <LogOut className={`h-5 w-5 ${isCollapsed ? 'mx-auto' : 'mr-3'}`} />
-            {!isCollapsed && <span>Logout</span>}
-          </button>
-        </div>
+            Logout
+          </span>
+
+          {/* Tooltip for collapsed state */}
+          {collapsed && (
+            <div className="absolute left-12 bg-gray-900 text-white px-2 py-1 rounded text-sm opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none whitespace-nowrap z-50">
+              Logout
+            </div>
+          )}
+        </button>
       </div>
-    </aside>
+
+      {/* Mining Status Indicator (when collapsed) */}
+      {collapsed && isConnected && (
+        <div className="absolute bottom-20 left-2 right-2">
+          <div className="w-12 h-1 bg-gray-200 rounded-full mx-auto">
+            <div className="h-full bg-green-500 rounded-full animate-pulse" style={{ width: '60%' }}></div>
+          </div>
+          {chainId === CURRENT_NETWORK.chainId && (
+            <div className="w-2 h-2 bg-green-500 rounded-full mx-auto mt-1"></div>
+          )}
+          {chainId !== CURRENT_NETWORK.chainId && chainId && (
+            <div className="w-2 h-2 bg-red-500 rounded-full mx-auto mt-1"></div>
+          )}
+        </div>
+      )}
+    </div>
   );
 };
 

@@ -5,9 +5,37 @@ import {
   Zap, 
   Clock, 
   DollarSign, 
-  Activity
+  Activity,
+  Settings,
+  CheckCircle,
+  Timer,
+  TrendingUp,
+  Wrench,
+  Calendar,
+  Target,
+  Flame,
+  Award
 } from 'lucide-react';
 import { Button, StatsCard, Card } from '../components/ui';
+
+// 효율성 관련 인터페이스
+interface EfficiencyData {
+  current: number;
+  target: number;
+  consecutiveDays: number;
+  lastMaintenance: number; // 시간 (hours ago)
+  dailyActivityCompleted: boolean;
+  interruptionCount: number;
+  efficiencyBoosts: EfficiencyBoost[];
+}
+
+interface EfficiencyBoost {
+  id: string;
+  name: string;
+  value: number;
+  expiresAt?: Date;
+  source: 'maintenance' | 'daily_activity' | 'streak' | 'mission';
+}
 
 const EarnPage: React.FC = () => {
   const [isMining, setIsMining] = useState(false);
@@ -15,6 +43,30 @@ const EarnPage: React.FC = () => {
   const [earnings, setEarnings] = useState(0);
   const [hashRate, setHashRate] = useState(12.5);
   const [miningStartTime, setMiningStartTime] = useState<number | null>(null);
+  
+  // 효율성 상태
+  const [efficiency, setEfficiency] = useState<EfficiencyData>({
+    current: 78.5,
+    target: 85.0,
+    consecutiveDays: 3,
+    lastMaintenance: 2.5,
+    dailyActivityCompleted: true,
+    interruptionCount: 1,
+    efficiencyBoosts: [
+      {
+        id: '1',
+        name: 'Daily Activity',
+        value: 5,
+        source: 'daily_activity'
+      },
+      {
+        id: '2', 
+        name: '3-Day Streak',
+        value: 2.4,
+        source: 'streak'
+      }
+    ]
+  });
 
   // 24시간 = 86400초
   const TOTAL_MINING_TIME = 86400;
@@ -63,13 +115,20 @@ const EarnPage: React.FC = () => {
       interval = setInterval(() => {
         setMiningTime(prev => {
           const newTime = prev + 1;
-          // 채굴 수익 계산 (시간당 약 0.001 BTC)
-          setEarnings(prev => prev + 0.001 / 3600);
+          // 효율성을 반영한 채굴 수익 계산
+          const efficiencyMultiplier = efficiency.current / 70; // 70%를 기준으로
+          setEarnings(prev => prev + (0.001 / 3600) * efficiencyMultiplier);
+          
           // 해시레이트 변동 시뮬레이션
           setHashRate(prev => prev + (Math.random() - 0.5) * 0.1);
           
           if (newTime >= TOTAL_MINING_TIME) {
             setIsMining(false);
+            // 마이닝 완료시 연속일 증가
+            setEfficiency(prev => ({
+              ...prev,
+              consecutiveDays: prev.consecutiveDays + 1
+            }));
           }
           
           return newTime;
@@ -78,7 +137,7 @@ const EarnPage: React.FC = () => {
     }
     
     return () => clearInterval(interval);
-  }, [isMining, miningTime]);
+  }, [isMining, miningTime, efficiency.current]);
 
   const handleMiningToggle = () => {
     if (miningTime >= TOTAL_MINING_TIME) {
@@ -96,12 +155,76 @@ const EarnPage: React.FC = () => {
       setMiningStartTime(startTime);
       setIsMining(true);
     } else {
-      // 채굴 정지
+      // 채굴 정지 (중단 횟수 증가)
       setIsMining(false);
       setMiningStartTime(null);
       localStorage.removeItem('miningState');
+      setEfficiency(prev => ({
+        ...prev,
+        interruptionCount: prev.interruptionCount + 1
+      }));
     }
   };
+
+  // 유지보수 수행
+  const handleMaintenance = () => {
+    setEfficiency(prev => ({
+      ...prev,
+      lastMaintenance: 0,
+      efficiencyBoosts: [
+        ...prev.efficiencyBoosts.filter(boost => boost.source !== 'maintenance'),
+        {
+          id: `maintenance_${Date.now()}`,
+          name: 'Fresh Maintenance',
+          value: 3,
+          source: 'maintenance',
+          expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000) // 4시간 후
+        }
+      ]
+    }));
+  };
+
+  // 일일 활동 완료
+  const handleDailyActivity = () => {
+    setEfficiency(prev => ({
+      ...prev,
+      dailyActivityCompleted: true,
+      efficiencyBoosts: [
+        ...prev.efficiencyBoosts.filter(boost => boost.source !== 'daily_activity'),
+        {
+          id: `daily_${Date.now()}`,
+          name: 'Daily Activity',
+          value: 5,
+          source: 'daily_activity'
+        }
+      ]
+    }));
+  };
+
+  // 효율성 계산
+  const calculateCurrentEfficiency = () => {
+    let baseEfficiency = 70;
+    
+    // 연속일 보너스
+    baseEfficiency += Math.min(efficiency.consecutiveDays * 0.8, 15);
+    
+    // 일일 활동 보너스
+    if (efficiency.dailyActivityCompleted) baseEfficiency += 5;
+    
+    // 유지보수 상태
+    if (efficiency.lastMaintenance <= 4) baseEfficiency += 3;
+    
+    // 중단 패널티
+    baseEfficiency -= efficiency.interruptionCount * 2;
+    
+    // 부스터 적용
+    const boostValue = efficiency.efficiencyBoosts.reduce((sum, boost) => sum + boost.value, 0);
+    baseEfficiency += boostValue;
+    
+    return Math.max(50, Math.min(100, baseEfficiency));
+  };
+
+  const currentEfficiency = calculateCurrentEfficiency();
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -118,6 +241,21 @@ const EarnPage: React.FC = () => {
   };
 
   const progressPercentage = (miningTime / TOTAL_MINING_TIME) * 100;
+
+  const getEfficiencyColor = (eff: number) => {
+    if (eff >= 90) return 'text-green-600';
+    if (eff >= 80) return 'text-blue-600';
+    if (eff >= 70) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  const getEfficiencyGrade = (eff: number) => {
+    if (eff >= 95) return 'Diamond';
+    if (eff >= 90) return 'Platinum';
+    if (eff >= 80) return 'Gold';
+    if (eff >= 70) return 'Silver';
+    return 'Bronze';
+  };
 
   const statsData = [
     {
@@ -146,20 +284,20 @@ const EarnPage: React.FC = () => {
     },
     {
       title: 'Efficiency',
-      value: `${(progressPercentage * 0.95 + 5).toFixed(1)}%`,
-      change: isMining ? 'Optimizing' : 'Idle',
-      changeType: isMining ? 'positive' as const : 'neutral' as const,
+      value: `${currentEfficiency.toFixed(1)}%`,
+      change: `${getEfficiencyGrade(currentEfficiency)} Grade`,
+      changeType: currentEfficiency >= efficiency.target ? 'positive' as const : 'neutral' as const,
       icon: <Activity className="w-6 h-6" />,
       iconColor: 'bg-purple-100 text-purple-600'
     }
   ];
 
   const miningHistory = [
-    { date: '2024-01-05', duration: '24:00:00', earnings: 0.024, status: 'completed' },
-    { date: '2024-01-04', duration: '24:00:00', earnings: 0.023, status: 'completed' },
-    { date: '2024-01-03', duration: '18:30:00', earnings: 0.018, status: 'interrupted' },
-    { date: '2024-01-02', duration: '24:00:00', earnings: 0.025, status: 'completed' },
-    { date: '2024-01-01', duration: '24:00:00', earnings: 0.022, status: 'completed' },
+    { date: '2024-01-05', duration: '24:00:00', earnings: 0.024, efficiency: 87.3, status: 'completed' },
+    { date: '2024-01-04', duration: '24:00:00', earnings: 0.023, efficiency: 85.1, status: 'completed' },
+    { date: '2024-01-03', duration: '18:30:00', earnings: 0.018, efficiency: 72.8, status: 'interrupted' },
+    { date: '2024-01-02', duration: '24:00:00', earnings: 0.025, efficiency: 89.2, status: 'completed' },
+    { date: '2024-01-01', duration: '24:00:00', earnings: 0.022, efficiency: 83.5, status: 'completed' },
   ];
 
   return (
@@ -169,7 +307,9 @@ const EarnPage: React.FC = () => {
         {/* Mining Control Section */}
         <div className="mb-6 md:mb-8">
           <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-2">Mining Operations</h2>
-          <p className="text-sm md:text-base text-gray-600">Start your 24-hour mining session and track your progress.</p>
+          <p className="text-sm md:text-base text-gray-600">
+            Start your 24-hour mining session and optimize your efficiency for maximum rewards.
+          </p>
         </div>
 
         {/* Mining Control Panel */}
@@ -228,6 +368,9 @@ const EarnPage: React.FC = () => {
                       {progressPercentage.toFixed(1)}%
                     </div>
                     <div className="text-sm text-gray-600">Complete</div>
+                    <div className={`text-xs font-medium mt-1 ${getEfficiencyColor(currentEfficiency)}`}>
+                      {currentEfficiency.toFixed(1)}% Efficiency
+                    </div>
                   </div>
                 </div>
               </div>
@@ -269,6 +412,198 @@ const EarnPage: React.FC = () => {
           ))}
         </div>
 
+        {/* Efficiency Management Section */}
+        <div className="mb-8">
+          <Card>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                <Settings className="w-5 h-5 mr-2" />
+                Efficiency Management
+              </h3>
+              <div className={`text-sm font-medium ${getEfficiencyColor(currentEfficiency)}`}>
+                {getEfficiencyGrade(currentEfficiency)} Grade
+              </div>
+            </div>
+
+            {/* Efficiency Overview */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              {/* Efficiency Gauge */}
+              <div>
+                <div className="flex items-center justify-between mb-3">
+                  <span className="text-sm font-medium text-gray-700">Current Efficiency</span>
+                  <span className={`text-lg font-bold ${getEfficiencyColor(currentEfficiency)}`}>
+                    {currentEfficiency.toFixed(1)}%
+                  </span>
+                </div>
+                
+                {/* Progress Bar */}
+                <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
+                  <div 
+                    className="h-3 rounded-full transition-all duration-500"
+                    style={{ 
+                      width: `${Math.min(currentEfficiency, 100)}%`,
+                      background: currentEfficiency >= 90 ? 
+                        'linear-gradient(90deg, #10B981, #059669)' :
+                        currentEfficiency >= 80 ?
+                        'linear-gradient(90deg, #3B82F6, #2563EB)' :
+                        currentEfficiency >= 70 ?
+                        'linear-gradient(90deg, #F59E0B, #D97706)' :
+                        'linear-gradient(90deg, #EF4444, #DC2626)'
+                    }}
+                  />
+                </div>
+                
+                <div className="flex justify-between text-xs text-gray-500">
+                  <span>50%</span>
+                  <span>Target: {efficiency.target}%</span>
+                  <span>100%</span>
+                </div>
+              </div>
+
+              {/* Quick Stats */}
+              <div className="grid grid-cols-2 gap-4">
+                <div className="text-center p-3 bg-blue-50 rounded-lg">
+                  <div className="flex items-center justify-center mb-1">
+                    <Flame className="w-4 h-4 text-blue-600 mr-1" />
+                    <span className="text-xs text-blue-600 font-medium">Streak</span>
+                  </div>
+                  <div className="text-lg font-bold text-blue-900">{efficiency.consecutiveDays}</div>
+                  <div className="text-xs text-blue-600">days</div>
+                </div>
+                
+                <div className="text-center p-3 bg-green-50 rounded-lg">
+                  <div className="flex items-center justify-center mb-1">
+                    <TrendingUp className="w-4 h-4 text-green-600 mr-1" />
+                    <span className="text-xs text-green-600 font-medium">Bonus</span>
+                  </div>
+                  <div className="text-lg font-bold text-green-900">
+                    +{efficiency.efficiencyBoosts.reduce((sum, boost) => sum + boost.value, 0).toFixed(1)}%
+                  </div>
+                  <div className="text-xs text-green-600">active</div>
+                </div>
+              </div>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+              {/* Maintenance Button */}
+              <button
+                onClick={handleMaintenance}
+                disabled={efficiency.lastMaintenance < 4}
+                className={`p-4 rounded-lg border text-left transition-all ${
+                  efficiency.lastMaintenance >= 4 
+                    ? 'border-orange-200 hover:border-orange-300 bg-orange-50 hover:bg-orange-100' 
+                    : 'border-gray-200 bg-gray-50 cursor-not-allowed'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center">
+                    <Wrench className={`w-5 h-5 mr-2 ${
+                      efficiency.lastMaintenance >= 4 ? 'text-orange-600' : 'text-gray-400'
+                    }`} />
+                    <span className={`font-medium ${
+                      efficiency.lastMaintenance >= 4 ? 'text-orange-900' : 'text-gray-500'
+                    }`}>
+                      Maintenance
+                    </span>
+                  </div>
+                  {efficiency.lastMaintenance < 4 && (
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                  )}
+                </div>
+                <div className={`text-sm ${
+                  efficiency.lastMaintenance >= 4 ? 'text-orange-700' : 'text-gray-500'
+                }`}>
+                  {efficiency.lastMaintenance >= 4 
+                    ? `${efficiency.lastMaintenance.toFixed(1)}h ago - Click to maintain` 
+                    : `${(4 - efficiency.lastMaintenance).toFixed(1)}h until next maintenance`
+                  }
+                </div>
+                {efficiency.lastMaintenance >= 4 && (
+                  <div className="text-xs text-orange-600 mt-1">+3% efficiency boost</div>
+                )}
+              </button>
+
+              {/* Daily Activity */}
+              <button
+                onClick={handleDailyActivity}
+                disabled={efficiency.dailyActivityCompleted}
+                className={`p-4 rounded-lg border text-left transition-all ${
+                  !efficiency.dailyActivityCompleted 
+                    ? 'border-blue-200 hover:border-blue-300 bg-blue-50 hover:bg-blue-100' 
+                    : 'border-gray-200 bg-gray-50 cursor-not-allowed'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center">
+                    <Calendar className={`w-5 h-5 mr-2 ${
+                      !efficiency.dailyActivityCompleted ? 'text-blue-600' : 'text-gray-400'
+                    }`} />
+                    <span className={`font-medium ${
+                      !efficiency.dailyActivityCompleted ? 'text-blue-900' : 'text-gray-500'
+                    }`}>
+                      Daily Activity
+                    </span>
+                  </div>
+                  {efficiency.dailyActivityCompleted && (
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                  )}
+                </div>
+                <div className={`text-sm ${
+                  !efficiency.dailyActivityCompleted ? 'text-blue-700' : 'text-gray-500'
+                }`}>
+                  {efficiency.dailyActivityCompleted 
+                    ? 'Completed for today' 
+                    : 'Complete daily check-in'
+                  }
+                </div>
+                {!efficiency.dailyActivityCompleted && (
+                  <div className="text-xs text-blue-600 mt-1">+5% efficiency boost</div>
+                )}
+              </button>
+
+              {/* Streak Info */}
+              <div className="p-4 rounded-lg border border-purple-200 bg-purple-50 text-left">
+                <div className="flex items-center mb-2">
+                  <Award className="w-5 h-5 mr-2 text-purple-600" />
+                  <span className="font-medium text-purple-900">Mining Streak</span>
+                </div>
+                <div className="text-sm text-purple-700 mb-1">
+                  {efficiency.consecutiveDays} consecutive days
+                </div>
+                <div className="text-xs text-purple-600">
+                  +{Math.min(efficiency.consecutiveDays * 0.8, 15).toFixed(1)}% efficiency bonus
+                </div>
+                <div className="text-xs text-purple-500 mt-1">
+                  Next milestone: {Math.ceil(efficiency.consecutiveDays / 5) * 5} days
+                </div>
+              </div>
+            </div>
+
+            {/* Active Boosts */}
+            {efficiency.efficiencyBoosts.length > 0 && (
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Active Efficiency Boosts</h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                  {efficiency.efficiencyBoosts.map((boost) => (
+                    <div key={boost.id} className="bg-green-50 border border-green-200 rounded-lg p-3">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-xs font-medium text-green-800">{boost.name}</span>
+                        <span className="text-xs font-bold text-green-900">+{boost.value}%</span>
+                      </div>
+                      {boost.expiresAt && (
+                        <div className="text-xs text-green-600">
+                          Expires: {boost.expiresAt.toLocaleTimeString()}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </Card>
+        </div>
+
         {/* Mining History and Real-time Stats */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Mining History */}
@@ -283,11 +618,16 @@ const EarnPage: React.FC = () => {
                   </div>
                   <div className="text-right">
                     <p className="font-medium text-gray-900">₿{session.earnings}</p>
-                    <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                      session.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                    }`}>
-                      {session.status}
-                    </span>
+                    <div className="flex items-center space-x-2">
+                      <span className={`text-xs font-medium ${getEfficiencyColor(session.efficiency)}`}>
+                        {session.efficiency}% eff.
+                      </span>
+                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
+                        session.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
+                      }`}>
+                        {session.status}
+                      </span>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -302,8 +642,8 @@ const EarnPage: React.FC = () => {
             <div className="h-40 bg-gray-50 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-200 mb-6">
               <div className="text-center">
                 <Activity className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">Hash Rate Chart</p>
-                <p className="text-xs text-gray-400">Real-time visualization</p>
+                <p className="text-sm text-gray-500">Performance Chart</p>
+                <p className="text-xs text-gray-400">Hash Rate × Efficiency</p>
               </div>
             </div>
 
@@ -324,15 +664,23 @@ const EarnPage: React.FC = () => {
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Power Consumption:</span>
-                <span className="text-sm font-medium text-gray-900">
-                  {isMining ? '2.4 kW' : '0.1 kW'}
+                <span className="text-sm text-gray-600">Efficiency Multiplier:</span>
+                <span className={`text-sm font-medium ${getEfficiencyColor(currentEfficiency)}`}>
+                  {(currentEfficiency / 70).toFixed(2)}x
                 </span>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Temperature:</span>
+                <span className="text-sm text-gray-600">Projected 24h Earnings:</span>
                 <span className="text-sm font-medium text-gray-900">
-                  {isMining ? '68°C' : '32°C'}
+                  ₿{(0.024 * (currentEfficiency / 70)).toFixed(6)}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Interruptions:</span>
+                <span className={`text-sm font-medium ${
+                  efficiency.interruptionCount === 0 ? 'text-green-600' : 'text-red-600'
+                }`}>
+                  {efficiency.interruptionCount} times
                 </span>
               </div>
             </div>

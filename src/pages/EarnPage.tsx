@@ -20,7 +20,11 @@ import {
   Lock,
   Unlock,
   Key,
-  Info
+  Info,
+  BarChart3,
+  PieChart,
+  ArrowUp,
+  ArrowDown
 } from 'lucide-react';
 import { Button, StatsCard, Card, Input } from '../components/ui';
 
@@ -66,12 +70,30 @@ interface ReferralData {
   bonusMultiplier: number;
 }
 
+// 수익 데이터 인터페이스
+interface EarningsData {
+  date: string;
+  amount: number;
+  efficiency: number;
+  hashRate: number;
+}
+
+// 수익 통계 인터페이스
+interface EarningsStats {
+  total: number;
+  average: number;
+  best: number;
+  trend: 'up' | 'down' | 'stable';
+  trendPercentage: number;
+}
+
 const EarnPage: React.FC = () => {
   const [isMining, setIsMining] = useState(false);
   const [miningTime, setMiningTime] = useState(0); // seconds
   const [earnings, setEarnings] = useState(0);
   const [hashRate, setHashRate] = useState(12.0);
   const [miningStartTime, setMiningStartTime] = useState<number | null>(null);
+  const [selectedPeriod, setSelectedPeriod] = useState<'7d' | '30d' | '90d'>('7d');
   
   // Hash Rate 관련 상태
   const [hashRateData, setHashRateData] = useState<HashRateData>({
@@ -137,6 +159,52 @@ const EarnPage: React.FC = () => {
 
   // 24시간 = 86400초
   const TOTAL_MINING_TIME = 86400;
+
+  // 수익 데이터 생성 함수 (데모용)
+  const generateEarningsData = (days: number): EarningsData[] => {
+    const data: EarningsData[] = [];
+    const today = new Date();
+    
+    for (let i = days - 1; i >= 0; i--) {
+      const date = new Date(today);
+      date.setDate(date.getDate() - i);
+      
+      // 무작위 데이터 생성 (실제로는 DB에서 가져옴)
+      const baseAmount = 0.020 + Math.random() * 0.008;
+      const efficiencyVariation = 70 + Math.random() * 25;
+      const hashRateVariation = 10 + Math.random() * 8;
+      
+      data.push({
+        date: date.toISOString().split('T')[0],
+        amount: baseAmount,
+        efficiency: efficiencyVariation,
+        hashRate: hashRateVariation
+      });
+    }
+    
+    return data;
+  };
+
+  // 수익 통계 계산 함수
+  const calculateEarningsStats = (data: EarningsData[]): EarningsStats => {
+    if (data.length === 0) {
+      return { total: 0, average: 0, best: 0, trend: 'stable', trendPercentage: 0 };
+    }
+    
+    const total = data.reduce((sum, d) => sum + d.amount, 0);
+    const average = total / data.length;
+    const best = Math.max(...data.map(d => d.amount));
+    
+    // 트렌드 계산 (최근 반과 이전 반 비교)
+    const mid = Math.floor(data.length / 2);
+    const recentAvg = data.slice(mid).reduce((sum, d) => sum + d.amount, 0) / (data.length - mid);
+    const previousAvg = data.slice(0, mid).reduce((sum, d) => sum + d.amount, 0) / mid;
+    
+    const trendPercentage = ((recentAvg - previousAvg) / previousAvg) * 100;
+    const trend = trendPercentage > 5 ? 'up' : trendPercentage < -5 ? 'down' : 'stable';
+    
+    return { total, average, best, trend, trendPercentage };
+  };
 
   // Hash Rate 계산 함수
   const calculateHashRate = () => {
@@ -444,6 +512,15 @@ const EarnPage: React.FC = () => {
     if (eff >= 70) return 'Silver';
     return 'Bronze';
   };
+
+  // 수익 데이터 및 통계
+  const earningsData = generateEarningsData(
+    selectedPeriod === '7d' ? 7 : selectedPeriod === '30d' ? 30 : 90
+  );
+  const earningsStats = calculateEarningsStats(earningsData);
+
+  // 차트 바의 최대 높이 계산
+  const maxEarning = Math.max(...earningsData.map(d => d.amount));
 
   const statsData = [
     {
@@ -809,7 +886,7 @@ const EarnPage: React.FC = () => {
           </Card>
         </div>
 
-        {/* Mining History and Real-time Stats */}
+        {/* Mining History and Earnings Analytics */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Mining History */}
           <Card>
@@ -839,74 +916,135 @@ const EarnPage: React.FC = () => {
             </div>
           </Card>
 
-          {/* Real-time Mining Stats - Simplified */}
+          {/* Earnings Analytics - NEW */}
           <Card>
-            <h3 className="text-lg font-semibold text-gray-900 mb-6">Live Statistics</h3>
-            
-            {/* Key Metrics Grid */}
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="bg-gray-50 rounded-lg p-3">
-                <div className="text-xs text-gray-500 mb-1">Hash Rate</div>
-                <div className="text-lg font-bold text-orange-600">{hashRate.toFixed(2)} TH/s</div>
-                <div className="text-xs text-gray-600">Live</div>
-              </div>
-              
-              <div className="bg-gray-50 rounded-lg p-3">
-                <div className="text-xs text-gray-500 mb-1">Efficiency</div>
-                <div className={`text-lg font-bold ${getEfficiencyColor(currentEfficiency)}`}>
-                  {currentEfficiency.toFixed(1)}%
-                </div>
-                <div className="text-xs text-gray-600">{getEfficiencyGrade(currentEfficiency)}</div>
-              </div>
-              
-              <div className="bg-gray-50 rounded-lg p-3">
-                <div className="text-xs text-gray-500 mb-1">Session Time</div>
-                <div className="text-lg font-bold text-gray-900">{formatTime(miningTime)}</div>
-                <div className="text-xs text-gray-600">
-                  {miningTime < TOTAL_MINING_TIME ? 'Active' : 'Complete'}
-                </div>
-              </div>
-              
-              <div className="bg-gray-50 rounded-lg p-3">
-                <div className="text-xs text-gray-500 mb-1">Earnings</div>
-                <div className="text-lg font-bold text-green-600">₿{earnings.toFixed(6)}</div>
-                <div className="text-xs text-gray-600">Current</div>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                <BarChart3 className="w-5 h-5 mr-2" />
+                Earnings Analytics
+              </h3>
+              <div className="flex items-center space-x-2">
+                <button
+                  onClick={() => setSelectedPeriod('7d')}
+                  className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                    selectedPeriod === '7d' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  7D
+                </button>
+                <button
+                  onClick={() => setSelectedPeriod('30d')}
+                  className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                    selectedPeriod === '30d' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  30D
+                </button>
+                <button
+                  onClick={() => setSelectedPeriod('90d')}
+                  className={`px-3 py-1 text-xs font-medium rounded-lg transition-colors ${
+                    selectedPeriod === '90d' 
+                      ? 'bg-blue-100 text-blue-700' 
+                      : 'text-gray-600 hover:bg-gray-100'
+                  }`}
+                >
+                  90D
+                </button>
               </div>
             </div>
 
-            {/* Session Details */}
-            <div className="border-t border-gray-200 pt-4 space-y-3">
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-gray-600">Projected 24h Earnings</span>
-                <span className="font-medium text-gray-900">
-                  ₿{(0.024 * (hashRateData.current / hashRateData.base) * (currentEfficiency / 70) * referralData.bonusMultiplier).toFixed(6)}
-                </span>
+            {/* Stats Summary */}
+            <div className="grid grid-cols-3 gap-4 mb-6">
+              <div className="text-center">
+                <p className="text-xs text-gray-500 mb-1">Total Earned</p>
+                <p className="text-lg font-bold text-gray-900">₿{earningsStats.total.toFixed(4)}</p>
               </div>
-              
-              <div className="flex justify-between items-center text-sm">
-                <span className="text-gray-600">Total Multiplier</span>
-                <span className="font-medium text-purple-600">
-                  {((hashRateData.current / hashRateData.base) * (currentEfficiency / 70) * referralData.bonusMultiplier).toFixed(2)}x
-                </span>
+              <div className="text-center">
+                <p className="text-xs text-gray-500 mb-1">Daily Average</p>
+                <p className="text-lg font-bold text-gray-900">₿{earningsStats.average.toFixed(6)}</p>
               </div>
-              
-              {miningTime > 0 && miningTime < TOTAL_MINING_TIME && (
-                <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-600">Est. Completion</span>
-                  <span className="font-medium text-gray-900">
-                    {new Date(Date.now() + (TOTAL_MINING_TIME - miningTime) * 1000).toLocaleTimeString()}
+              <div className="text-center">
+                <p className="text-xs text-gray-500 mb-1">Best Day</p>
+                <p className="text-lg font-bold text-green-600">₿{earningsStats.best.toFixed(6)}</p>
+              </div>
+            </div>
+
+            {/* Trend Indicator */}
+            <div className="mb-6 p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-2">
+                  <TrendingUp className="w-5 h-5 text-gray-600" />
+                  <span className="text-sm font-medium text-gray-700">Trend Analysis</span>
+                </div>
+                <div className={`flex items-center space-x-1 ${
+                  earningsStats.trend === 'up' ? 'text-green-600' : 
+                  earningsStats.trend === 'down' ? 'text-red-600' : 'text-gray-600'
+                }`}>
+                  {earningsStats.trend === 'up' ? (
+                    <ArrowUp className="w-4 h-4" />
+                  ) : earningsStats.trend === 'down' ? (
+                    <ArrowDown className="w-4 h-4" />
+                  ) : null}
+                  <span className="text-sm font-medium">
+                    {Math.abs(earningsStats.trendPercentage).toFixed(1)}%
                   </span>
                 </div>
-              )}
+              </div>
             </div>
 
-            {/* Info Note */}
-            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-              <div className="flex items-start space-x-2">
-                <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-blue-700">
-                  Maximize earnings by maintaining high efficiency and completing daily activities.
-                </p>
+            {/* Bar Chart */}
+            <div className="h-48 relative">
+              <div className="absolute inset-0 flex items-end justify-around space-x-1">
+                {earningsData.map((data, index) => {
+                  const height = (data.amount / maxEarning) * 100;
+                  const isToday = index === earningsData.length - 1;
+                  
+                  return (
+                    <div key={index} className="relative flex-1 flex flex-col items-center">
+                      {/* Tooltip on hover */}
+                      <div className="group relative w-full flex flex-col items-center">
+                        <div className="absolute bottom-full mb-2 hidden group-hover:block z-10 bg-gray-900 text-white text-xs rounded-lg py-2 px-3 whitespace-nowrap">
+                          <div className="font-medium">₿{data.amount.toFixed(6)}</div>
+                          <div className="text-gray-300">{data.efficiency.toFixed(1)}% efficiency</div>
+                          <div className="absolute top-full left-1/2 transform -translate-x-1/2 w-0 h-0 border-l-4 border-r-4 border-t-4 border-transparent border-t-gray-900"></div>
+                        </div>
+                        
+                        {/* Bar */}
+                        <div 
+                          className={`w-full rounded-t-md transition-all duration-300 cursor-pointer ${
+                            isToday 
+                              ? 'bg-gradient-to-t from-blue-600 to-blue-400 hover:from-blue-700 hover:to-blue-500' 
+                              : 'bg-gradient-to-t from-gray-400 to-gray-300 hover:from-gray-500 hover:to-gray-400'
+                          }`}
+                          style={{ height: `${height}%`, minHeight: '20px' }}
+                        />
+                      </div>
+                      
+                      {/* Date label (show only every few bars for space) */}
+                      {(index % Math.ceil(earningsData.length / 7) === 0 || isToday) && (
+                        <div className="mt-2 text-xs text-gray-600 transform -rotate-45 origin-top-left">
+                          {new Date(data.date).toLocaleDateString('en', { month: 'short', day: 'numeric' })}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Legend */}
+            <div className="mt-6 flex items-center justify-center space-x-4 text-xs">
+              <div className="flex items-center space-x-1">
+                <div className="w-3 h-3 bg-gradient-to-t from-blue-600 to-blue-400 rounded"></div>
+                <span className="text-gray-600">Today</span>
+              </div>
+              <div className="flex items-center space-x-1">
+                <div className="w-3 h-3 bg-gradient-to-t from-gray-400 to-gray-300 rounded"></div>
+                <span className="text-gray-600">Previous Days</span>
               </div>
             </div>
           </Card>

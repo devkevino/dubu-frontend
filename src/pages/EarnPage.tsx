@@ -23,6 +23,16 @@ import {
 } from 'lucide-react';
 import { Button, StatsCard, Card, Input } from '../components/ui';
 
+// Hash Rate 관련 인터페이스
+interface HashRateData {
+  base: number; // 기본 Hash Rate (12.0 TH/s)
+  maximum: number; // 최대 Hash Rate (24.0 TH/s)
+  consecutiveDaysBonus: number; // 연속 로그인일 보너스 (1일당 +0.2, 최대 +2.0)
+  dailyCheckInBonus: number; // 일일 체크인 보너스 (+1.0)
+  teamBonus: number; // 팀 보너스 (1명당 +0.1, 최대 +10.0)
+  current: number; // 현재 Hash Rate
+}
+
 // 효율성 관련 인터페이스
 interface EfficiencyData {
   current: number;
@@ -59,15 +69,37 @@ const EarnPage: React.FC = () => {
   const [isMining, setIsMining] = useState(false);
   const [miningTime, setMiningTime] = useState(0); // seconds
   const [earnings, setEarnings] = useState(0);
-  const [hashRate, setHashRate] = useState(12.5);
+  const [hashRate, setHashRate] = useState(12.0);
   const [miningStartTime, setMiningStartTime] = useState<number | null>(null);
+  
+  // Hash Rate 관련 상태
+  const [hashRateData, setHashRateData] = useState<HashRateData>({
+    base: 12.0,
+    maximum: 24.0,
+    consecutiveDaysBonus: 0,
+    dailyCheckInBonus: 0,
+    teamBonus: 0,
+    current: 12.0
+  });
+
+  // 팀 관련 상태 (임시 데이터)
+  const [teamData, setTeamData] = useState({
+    memberCount: 3, // 임시 데이터
+    maxMembers: 100
+  });
   
   // 레퍼럴 관련 상태
   const [referralInput, setReferralInput] = useState('');
   const [referralData, setReferralData] = useState<ReferralData>({
-    hasEnteredCode: false,
-    referralCode: '',
-    bonusMultiplier: 1.0
+    hasEnteredCode: true, // view 확인을 위해 true로 설정
+    referralCode: 'MINER123456',
+    referrerInfo: {
+      name: 'John Doe',
+      email: 'john.doe@example.com',
+      joinDate: '2023-12-15',
+      totalEarnings: '2.45678'
+    },
+    bonusMultiplier: 1.15
   });
   const [isValidatingReferral, setIsValidatingReferral] = useState(false);
   const [referralError, setReferralError] = useState('');
@@ -76,9 +108,9 @@ const EarnPage: React.FC = () => {
   const [efficiency, setEfficiency] = useState<EfficiencyData>({
     current: 78.5,
     target: 85.0,
-    consecutiveDays: 3,
+    consecutiveDays: 5, // 임시로 5일로 설정
     lastMaintenance: 2.5,
-    dailyActivityCompleted: true,
+    dailyActivityCompleted: false, // 테스트를 위해 false
     interruptionCount: 1,
     efficiencyBoosts: [
       {
@@ -89,15 +121,58 @@ const EarnPage: React.FC = () => {
       },
       {
         id: '2', 
-        name: '3-Day Streak',
-        value: 2.4,
+        name: '5-Day Streak',
+        value: 4.0,
         source: 'streak'
+      },
+      {
+        id: '3',
+        name: 'Referral Bonus',
+        value: 15,
+        source: 'referral'
       }
     ]
   });
 
   // 24시간 = 86400초
   const TOTAL_MINING_TIME = 86400;
+
+  // Hash Rate 계산 함수
+  const calculateHashRate = () => {
+    let currentHashRate = hashRateData.base; // 12.0 TH/s
+    
+    // 연속 로그인일 보너스 (1일당 +0.2 TH/s, 최대 +2.0 TH/s)
+    const consecutiveBonus = Math.min(efficiency.consecutiveDays * 0.2, 2.0);
+    
+    // 일일 체크인 보너스 (+1.0 TH/s)
+    const checkInBonus = efficiency.dailyActivityCompleted ? 1.0 : 0;
+    
+    // 팀 보너스 (1명당 +0.1 TH/s, 최대 +10.0 TH/s)
+    const teamBonus = Math.min(teamData.memberCount * 0.1, 10.0);
+    
+    // 총 Hash Rate 계산 (최대 24.0 TH/s)
+    const totalHashRate = Math.min(
+      currentHashRate + consecutiveBonus + checkInBonus + teamBonus,
+      hashRateData.maximum
+    );
+    
+    // Hash Rate 데이터 업데이트
+    setHashRateData(prev => ({
+      ...prev,
+      consecutiveDaysBonus: consecutiveBonus,
+      dailyCheckInBonus: checkInBonus,
+      teamBonus: teamBonus,
+      current: totalHashRate
+    }));
+    
+    return totalHashRate;
+  };
+
+  // Hash Rate 업데이트
+  useEffect(() => {
+    const newHashRate = calculateHashRate();
+    setHashRate(newHashRate);
+  }, [efficiency.consecutiveDays, efficiency.dailyActivityCompleted, teamData.memberCount]);
 
   // 페이지 로드시 저장된 상태 복원
   useEffect(() => {
@@ -205,8 +280,6 @@ const EarnPage: React.FC = () => {
     }
   };
 
-
-
   // 채굴 상태 저장
   useEffect(() => {
     if (isMining && miningStartTime) {
@@ -229,10 +302,12 @@ const EarnPage: React.FC = () => {
           // 효율성과 레퍼럴 보너스를 반영한 채굴 수익 계산
           const efficiencyMultiplier = efficiency.current / 70; // 70%를 기준으로
           const referralMultiplier = referralData.bonusMultiplier;
-          setEarnings(prev => prev + (0.001 / 3600) * efficiencyMultiplier * referralMultiplier);
+          const hashRateMultiplier = hashRateData.current / hashRateData.base;
+          setEarnings(prev => prev + (0.001 / 3600) * efficiencyMultiplier * referralMultiplier * hashRateMultiplier);
           
-          // 해시레이트 변동 시뮬레이션
-          setHashRate(prev => prev + (Math.random() - 0.5) * 0.1);
+          // 해시레이트 변동 시뮬레이션 (기본값 기준으로 작은 변동)
+          const baseHashRate = hashRateData.current;
+          setHashRate(prev => baseHashRate + (Math.random() - 0.5) * 0.2);
           
           if (newTime >= TOTAL_MINING_TIME) {
             setIsMining(false);
@@ -249,7 +324,7 @@ const EarnPage: React.FC = () => {
     }
     
     return () => clearInterval(interval);
-  }, [isMining, miningTime, efficiency.current, referralData.bonusMultiplier]);
+  }, [isMining, miningTime, efficiency.current, referralData.bonusMultiplier, hashRateData.current, hashRateData.base]);
 
   const handleMiningToggle = () => {
     if (miningTime >= TOTAL_MINING_TIME) {
@@ -369,116 +444,6 @@ const EarnPage: React.FC = () => {
     return 'Bronze';
   };
 
-  // 레퍼럴 코드 입력이 필요한 경우
-  if (!referralData.hasEnteredCode) {
-    return (
-      <div className="h-full overflow-auto">
-        <div className="p-4 md:p-6">
-          {/* Header */}
-          <div className="mb-6 md:mb-8">
-            <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-2">Mining Access Required</h2>
-            <p className="text-sm md:text-base text-gray-600">
-              Enter a valid referral code to unlock mining capabilities and start earning rewards.
-            </p>
-          </div>
-
-          {/* Referral Code Section */}
-          <div className="max-w-2xl mx-auto">
-            <Card className="text-center">
-              <div className="p-6 md:p-8">
-                <div className="w-16 h-16 bg-gradient-to-br from-purple-100 to-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
-                  <Gift className="w-8 h-8 text-purple-600" />
-                </div>
-                
-                <h3 className="text-xl md:text-2xl font-bold text-gray-900 mb-4">
-                  Referral Code Required
-                </h3>
-                
-                <p className="text-gray-600 mb-8">
-                  You must enter a valid referral code to start mining. This ensures you receive a 
-                  <strong className="text-purple-600">15% mining bonus</strong> and connects you with our mining community.
-                </p>
-
-                {/* Benefits */}
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-                    <div className="flex items-center justify-center mb-2">
-                      <Lock className="w-6 h-6 text-red-600" />
-                    </div>
-                    <h4 className="font-semibold text-red-900 mb-1">Required</h4>
-                    <p className="text-sm text-red-700">Must have valid code</p>
-                  </div>
-                  
-                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-                    <div className="flex items-center justify-center mb-2">
-                      <TrendingUp className="w-6 h-6 text-green-600" />
-                    </div>
-                    <h4 className="font-semibold text-green-900 mb-1">+15% Bonus</h4>
-                    <p className="text-sm text-green-700">Extra mining rewards</p>
-                  </div>
-                  
-                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                    <div className="flex items-center justify-center mb-2">
-                      <Users className="w-6 h-6 text-blue-600" />
-                    </div>
-                    <h4 className="font-semibold text-blue-900 mb-1">Community</h4>
-                    <p className="text-sm text-blue-700">Connect with miners</p>
-                  </div>
-                </div>
-
-                {/* Referral Input */}
-                <div className="space-y-4">
-                  <div className="text-left">
-                    <Input
-                      label="Referral Code (Required)"
-                      type="text"
-                      placeholder="Enter referral code (e.g., MINER123456)"
-                      value={referralInput}
-                      onChange={(e) => {
-                        setReferralInput(e.target.value.toUpperCase());
-                        setReferralError('');
-                      }}
-                      icon={Key}
-                      error={referralError}
-                      required
-                      className="text-center"
-                    />
-                  </div>
-
-                  <Button
-                    onClick={handleReferralSubmit}
-                    variant="primary"
-                    size="lg"
-                    loading={isValidatingReferral}
-                    disabled={!referralInput.trim()}
-                    className="w-full"
-                    icon={referralInput.trim() ? CheckCircle : Lock}
-                  >
-                    {isValidatingReferral ? 'Validating Code...' : 'Validate & Continue'}
-                  </Button>
-                </div>
-
-                {/* Info */}
-                <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg text-left">
-                  <h5 className="font-medium text-red-900 mb-2 flex items-center">
-                    <Lock className="w-4 h-4 mr-2" />
-                    Required for Mining Access
-                  </h5>
-                  <ul className="text-sm text-red-700 space-y-1">
-                    <li>• A valid referral code is required to start mining</li>
-                    <li>• You will receive a 15% bonus on all mining rewards</li>
-                    <li>• Your referrer also gets rewarded for inviting you</li>
-                    <li>• Contact existing miners to get a referral code</li>
-                  </ul>
-                </div>
-              </div>
-            </Card>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   const statsData = [
     {
       title: 'Current Earnings',
@@ -490,9 +455,9 @@ const EarnPage: React.FC = () => {
     },
     {
       title: 'Hash Rate',
-      value: `${hashRate.toFixed(2)} TH/s`,
-      change: isMining ? 'Fluctuating' : 'Stable',
-      changeType: 'neutral' as const,
+      value: `${hashRateData.current.toFixed(1)} TH/s`,
+      change: `${((hashRateData.current / hashRateData.base) * 100).toFixed(0)}% of max capacity`,
+      changeType: 'positive' as const,
       icon: <Zap className="w-6 h-6" />,
       iconColor: 'bg-orange-100 text-orange-600'
     },
@@ -530,7 +495,7 @@ const EarnPage: React.FC = () => {
         <div className="mb-6 md:mb-8">
           <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-2">Mining Operations</h2>
           <p className="text-sm md:text-base text-gray-600">
-            Start your 24-hour mining session and optimize your efficiency for maximum rewards.
+            Start your 24-hour mining session and optimize your Hash Rate & efficiency for maximum rewards.
           </p>
         </div>
 
@@ -668,6 +633,241 @@ const EarnPage: React.FC = () => {
               iconColor={stat.iconColor}
             />
           ))}
+        </div>
+
+        {/* Hash Rate Management Section */}
+        <div className="mb-8">
+          <Card>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                <Zap className="w-5 h-5 mr-2" />
+                Hash Rate Management
+              </h3>
+              <div className="text-right">
+                <div className="text-lg font-bold text-orange-600">
+                  {hashRateData.current.toFixed(1)} TH/s
+                </div>
+                <div className="text-xs text-gray-500">
+                  {((hashRateData.current / hashRateData.maximum) * 100).toFixed(0)}% of maximum
+                </div>
+              </div>
+            </div>
+
+            {/* Hash Rate Progress Bar */}
+            <div className="mb-6">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-sm font-medium text-gray-700">Current Hash Rate</span>
+                <span className="text-sm text-gray-500">
+                  {hashRateData.current.toFixed(1)} / {hashRateData.maximum} TH/s
+                </span>
+              </div>
+              
+              <div className="w-full bg-gray-200 rounded-full h-4 mb-2">
+                <div 
+                  className="h-4 rounded-full transition-all duration-500 bg-gradient-to-r from-orange-400 to-red-500"
+                  style={{ 
+                    width: `${(hashRateData.current / hashRateData.maximum) * 100}%`
+                  }}
+                />
+              </div>
+              
+              <div className="flex justify-between text-xs text-gray-500">
+                <span>Base: {hashRateData.base} TH/s</span>
+                <span>Maximum: {hashRateData.maximum} TH/s</span>
+              </div>
+            </div>
+
+            {/* Hash Rate Breakdown */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+              {/* Current Breakdown */}
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Hash Rate Breakdown</h4>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600">Base Rate</span>
+                    <span className="text-sm font-medium text-gray-900">
+                      {hashRateData.base.toFixed(1)} TH/s
+                    </span>
+                  </div>
+                  
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600 flex items-center">
+                      <Flame className="w-3 h-3 mr-1 text-blue-500" />
+                      Login Streak ({efficiency.consecutiveDays} days)
+                    </span>
+                    <span className="text-sm font-medium text-blue-600">
+                      +{hashRateData.consecutiveDaysBonus.toFixed(1)} TH/s
+                    </span>
+                  </div>
+                  
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600 flex items-center">
+                      <CheckCircle className="w-3 h-3 mr-1 text-green-500" />
+                      Daily Check-in
+                    </span>
+                    <span className={`text-sm font-medium ${
+                      efficiency.dailyActivityCompleted ? 'text-green-600' : 'text-gray-400'
+                    }`}>
+                      +{hashRateData.dailyCheckInBonus.toFixed(1)} TH/s
+                    </span>
+                  </div>
+                  
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-gray-600 flex items-center">
+                      <Users className="w-3 h-3 mr-1 text-purple-500" />
+                      Team Bonus ({teamData.memberCount} members)
+                    </span>
+                    <span className="text-sm font-medium text-purple-600">
+                      +{hashRateData.teamBonus.toFixed(1)} TH/s
+                    </span>
+                  </div>
+                  
+                  <div className="pt-2 border-t border-gray-200">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium text-gray-900">Total Hash Rate</span>
+                      <span className="text-sm font-bold text-orange-600">
+                        {hashRateData.current.toFixed(1)} TH/s
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Potential Improvements */}
+              <div>
+                <h4 className="text-sm font-medium text-gray-700 mb-3">Potential Improvements</h4>
+                <div className="space-y-3">
+                  {/* Login Streak Improvement */}
+                  {hashRateData.consecutiveDaysBonus < 2.0 && (
+                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-blue-900">Login Streak</span>
+                        <span className="text-xs text-blue-600">
+                          +{(2.0 - hashRateData.consecutiveDaysBonus).toFixed(1)} TH/s potential
+                        </span>
+                      </div>
+                      <p className="text-xs text-blue-700">
+                        {Math.ceil((2.0 - hashRateData.consecutiveDaysBonus) / 0.2)} more consecutive days needed
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Daily Check-in */}
+                  {!efficiency.dailyActivityCompleted && (
+                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-green-900">Daily Check-in</span>
+                        <span className="text-xs text-green-600">+1.0 TH/s available</span>
+                      </div>
+                      <p className="text-xs text-green-700">Complete today's check-in below</p>
+                    </div>
+                  )}
+
+                  {/* Team Bonus */}
+                  {hashRateData.teamBonus < 10.0 && (
+                    <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
+                      <div className="flex items-center justify-between mb-1">
+                        <span className="text-sm font-medium text-purple-900">Team Building</span>
+                        <span className="text-xs text-purple-600">
+                          +{(10.0 - hashRateData.teamBonus).toFixed(1)} TH/s potential
+                        </span>
+                      </div>
+                      <p className="text-xs text-purple-700">
+                        Invite {Math.ceil((10.0 - hashRateData.teamBonus) / 0.1)} more team members
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Maximum Reached */}
+                  {hashRateData.current >= hashRateData.maximum && (
+                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <div className="flex items-center justify-center">
+                        <Award className="w-4 h-4 mr-2 text-yellow-600" />
+                        <span className="text-sm font-medium text-yellow-900">
+                          Maximum Hash Rate Achieved!
+                        </span>
+                      </div>
+                      <p className="text-xs text-yellow-700 text-center mt-1">
+                        You've unlocked the full mining potential
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* Quick Actions for Hash Rate */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* Daily Check-in Action */}
+              <button
+                onClick={handleDailyActivity}
+                disabled={efficiency.dailyActivityCompleted}
+                className={`p-4 rounded-lg border text-left transition-all ${
+                  !efficiency.dailyActivityCompleted 
+                    ? 'border-green-200 hover:border-green-300 bg-green-50 hover:bg-green-100' 
+                    : 'border-gray-200 bg-gray-50 cursor-not-allowed'
+                }`}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center">
+                    <CheckCircle className={`w-5 h-5 mr-2 ${
+                      !efficiency.dailyActivityCompleted ? 'text-green-600' : 'text-gray-400'
+                    }`} />
+                    <span className={`font-medium ${
+                      !efficiency.dailyActivityCompleted ? 'text-green-900' : 'text-gray-500'
+                    }`}>
+                      Daily Check-in
+                    </span>
+                  </div>
+                  {efficiency.dailyActivityCompleted && (
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                  )}
+                </div>
+                <div className={`text-sm ${
+                  !efficiency.dailyActivityCompleted ? 'text-green-700' : 'text-gray-500'
+                }`}>
+                  {efficiency.dailyActivityCompleted 
+                    ? 'Completed for today' 
+                    : 'Get +1.0 TH/s bonus'
+                  }
+                </div>
+              </button>
+
+              {/* Team Building (Placeholder) */}
+              <div className="p-4 rounded-lg border border-purple-200 bg-purple-50 text-left">
+                <div className="flex items-center mb-2">
+                  <Users className="w-5 h-5 mr-2 text-purple-600" />
+                  <span className="font-medium text-purple-900">Team Building</span>
+                </div>
+                <div className="text-sm text-purple-700 mb-1">
+                  {teamData.memberCount} / {teamData.maxMembers} members
+                </div>
+                <div className="text-xs text-purple-600">
+                  Each member: +0.1 TH/s (max +10.0 TH/s)
+                </div>
+              </div>
+
+              {/* Login Streak Info */}
+              <div className="p-4 rounded-lg border border-blue-200 bg-blue-50 text-left">
+                <div className="flex items-center mb-2">
+                  <Flame className="w-5 h-5 mr-2 text-blue-600" />
+                  <span className="font-medium text-blue-900">Login Streak</span>
+                </div>
+                <div className="text-sm text-blue-700 mb-1">
+                  {efficiency.consecutiveDays} consecutive days
+                </div>
+                <div className="text-xs text-blue-600">
+                  Current bonus: +{hashRateData.consecutiveDaysBonus.toFixed(1)} TH/s
+                </div>
+                <div className="text-xs text-blue-500 mt-1">
+                  {hashRateData.consecutiveDaysBonus < 2.0 ? 
+                    `Max bonus in ${Math.ceil((2.0 - hashRateData.consecutiveDaysBonus) / 0.2)} days` :
+                    'Maximum streak bonus achieved!'
+                  }
+                </div>
+              </div>
+            </div>
+          </Card>
         </div>
 
         {/* Efficiency Management Section */}
@@ -941,6 +1141,24 @@ const EarnPage: React.FC = () => {
                 </span>
               </div>
               <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Current Hash Rate:</span>
+                <span className="text-sm font-medium text-orange-600">
+                  {hashRate.toFixed(2)} TH/s
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Base Hash Rate:</span>
+                <span className="text-sm font-medium text-gray-900">
+                  {hashRateData.base.toFixed(1)} TH/s
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Hash Rate Bonus:</span>
+                <span className="text-sm font-medium text-orange-600">
+                  +{(hashRateData.current - hashRateData.base).toFixed(1)} TH/s
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Efficiency Multiplier:</span>
                 <span className={`text-sm font-medium ${getEfficiencyColor(currentEfficiency)}`}>
                   {(currentEfficiency / 70).toFixed(2)}x
@@ -962,7 +1180,7 @@ const EarnPage: React.FC = () => {
               <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Projected 24h Earnings:</span>
                 <span className="text-sm font-medium text-gray-900">
-                  ₿{(0.024 * (currentEfficiency / 70) * referralData.bonusMultiplier).toFixed(6)}
+                  ₿{(0.024 * (hashRateData.current / hashRateData.base) * (currentEfficiency / 70) * referralData.bonusMultiplier).toFixed(6)}
                 </span>
               </div>
               <div className="flex justify-between items-center">

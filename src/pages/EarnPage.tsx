@@ -14,9 +14,14 @@ import {
   Calendar,
   Target,
   Flame,
-  Award
+  Award,
+  Users,
+  Gift,
+  Lock,
+  Unlock,
+  Key
 } from 'lucide-react';
-import { Button, StatsCard, Card } from '../components/ui';
+import { Button, StatsCard, Card, Input } from '../components/ui';
 
 // 효율성 관련 인터페이스
 interface EfficiencyData {
@@ -34,7 +39,20 @@ interface EfficiencyBoost {
   name: string;
   value: number;
   expiresAt?: Date;
-  source: 'maintenance' | 'daily_activity' | 'streak' | 'mission';
+  source: 'maintenance' | 'daily_activity' | 'streak' | 'mission' | 'referral';
+}
+
+// 레퍼럴 관련 인터페이스
+interface ReferralData {
+  hasEnteredCode: boolean;
+  referralCode: string;
+  referrerInfo?: {
+    name: string;
+    email: string;
+    joinDate: string;
+    totalEarnings: string;
+  };
+  bonusMultiplier: number;
 }
 
 const EarnPage: React.FC = () => {
@@ -44,6 +62,16 @@ const EarnPage: React.FC = () => {
   const [hashRate, setHashRate] = useState(12.5);
   const [miningStartTime, setMiningStartTime] = useState<number | null>(null);
   
+  // 레퍼럴 관련 상태
+  const [referralInput, setReferralInput] = useState('');
+  const [referralData, setReferralData] = useState<ReferralData>({
+    hasEnteredCode: false,
+    referralCode: '',
+    bonusMultiplier: 1.0
+  });
+  const [isValidatingReferral, setIsValidatingReferral] = useState(false);
+  const [referralError, setReferralError] = useState('');
+
   // 효율성 상태
   const [efficiency, setEfficiency] = useState<EfficiencyData>({
     current: 78.5,
@@ -73,6 +101,13 @@ const EarnPage: React.FC = () => {
 
   // 페이지 로드시 저장된 상태 복원
   useEffect(() => {
+    // 레퍼럴 코드 상태 복원
+    const savedReferralData = localStorage.getItem('referralData');
+    if (savedReferralData) {
+      setReferralData(JSON.parse(savedReferralData));
+    }
+
+    // 마이닝 상태 복원
     const savedMiningState = localStorage.getItem('miningState');
     if (savedMiningState) {
       const { isMining: savedIsMining, startTime, earnings: savedEarnings } = JSON.parse(savedMiningState);
@@ -96,6 +131,82 @@ const EarnPage: React.FC = () => {
     }
   }, []);
 
+  // 레퍼럴 코드 검증 (임시 구현)
+  const validateReferralCode = async (code: string): Promise<boolean> => {
+    setIsValidatingReferral(true);
+    setReferralError('');
+
+    try {
+      // 임시 검증 로직 (실제로는 API 호출)
+      await new Promise(resolve => setTimeout(resolve, 1500)); // 로딩 시뮬레이션
+
+      // 임시 검증 룰
+      if (code.length < 6) {
+        setReferralError('레퍼럴 코드는 최소 6자 이상이어야 합니다.');
+        return false;
+      }
+
+      if (!code.match(/^[A-Z0-9]+$/)) {
+        setReferralError('레퍼럴 코드는 영문 대문자와 숫자만 포함해야 합니다.');
+        return false;
+      }
+
+      // 임시 더미 데이터
+      const dummyReferrerData = {
+        name: 'John Doe',
+        email: 'john.doe@example.com',
+        joinDate: '2023-12-15',
+        totalEarnings: '2.45678'
+      };
+
+      // 성공시 레퍼럴 데이터 설정
+      const newReferralData: ReferralData = {
+        hasEnteredCode: true,
+        referralCode: code,
+        referrerInfo: dummyReferrerData,
+        bonusMultiplier: 1.15 // 15% 보너스
+      };
+
+      setReferralData(newReferralData);
+      localStorage.setItem('referralData', JSON.stringify(newReferralData));
+
+      // 레퍼럴 보너스 효율성 부스터 추가
+      setEfficiency(prev => ({
+        ...prev,
+        efficiencyBoosts: [
+          ...prev.efficiencyBoosts.filter(boost => boost.source !== 'referral'),
+          {
+            id: `referral_${Date.now()}`,
+            name: 'Referral Bonus',
+            value: 15,
+            source: 'referral'
+          }
+        ]
+      }));
+
+      return true;
+    } catch (error) {
+      setReferralError('레퍼럴 코드 검증 중 오류가 발생했습니다.');
+      return false;
+    } finally {
+      setIsValidatingReferral(false);
+    }
+  };
+
+  const handleReferralSubmit = async () => {
+    if (!referralInput.trim()) {
+      setReferralError('레퍼럴 코드는 필수입니다.');
+      return;
+    }
+
+    const isValid = await validateReferralCode(referralInput.toUpperCase());
+    if (isValid) {
+      setReferralInput('');
+    }
+  };
+
+
+
   // 채굴 상태 저장
   useEffect(() => {
     if (isMining && miningStartTime) {
@@ -115,9 +226,10 @@ const EarnPage: React.FC = () => {
       interval = setInterval(() => {
         setMiningTime(prev => {
           const newTime = prev + 1;
-          // 효율성을 반영한 채굴 수익 계산
+          // 효율성과 레퍼럴 보너스를 반영한 채굴 수익 계산
           const efficiencyMultiplier = efficiency.current / 70; // 70%를 기준으로
-          setEarnings(prev => prev + (0.001 / 3600) * efficiencyMultiplier);
+          const referralMultiplier = referralData.bonusMultiplier;
+          setEarnings(prev => prev + (0.001 / 3600) * efficiencyMultiplier * referralMultiplier);
           
           // 해시레이트 변동 시뮬레이션
           setHashRate(prev => prev + (Math.random() - 0.5) * 0.1);
@@ -137,7 +249,7 @@ const EarnPage: React.FC = () => {
     }
     
     return () => clearInterval(interval);
-  }, [isMining, miningTime, efficiency.current]);
+  }, [isMining, miningTime, efficiency.current, referralData.bonusMultiplier]);
 
   const handleMiningToggle = () => {
     if (miningTime >= TOTAL_MINING_TIME) {
@@ -257,6 +369,116 @@ const EarnPage: React.FC = () => {
     return 'Bronze';
   };
 
+  // 레퍼럴 코드 입력이 필요한 경우
+  if (!referralData.hasEnteredCode) {
+    return (
+      <div className="h-full overflow-auto">
+        <div className="p-4 md:p-6">
+          {/* Header */}
+          <div className="mb-6 md:mb-8">
+            <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-2">Mining Access Required</h2>
+            <p className="text-sm md:text-base text-gray-600">
+              Enter a valid referral code to unlock mining capabilities and start earning rewards.
+            </p>
+          </div>
+
+          {/* Referral Code Section */}
+          <div className="max-w-2xl mx-auto">
+            <Card className="text-center">
+              <div className="p-6 md:p-8">
+                <div className="w-16 h-16 bg-gradient-to-br from-purple-100 to-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                  <Gift className="w-8 h-8 text-purple-600" />
+                </div>
+                
+                <h3 className="text-xl md:text-2xl font-bold text-gray-900 mb-4">
+                  Referral Code Required
+                </h3>
+                
+                <p className="text-gray-600 mb-8">
+                  You must enter a valid referral code to start mining. This ensures you receive a 
+                  <strong className="text-purple-600">15% mining bonus</strong> and connects you with our mining community.
+                </p>
+
+                {/* Benefits */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+                    <div className="flex items-center justify-center mb-2">
+                      <Lock className="w-6 h-6 text-red-600" />
+                    </div>
+                    <h4 className="font-semibold text-red-900 mb-1">Required</h4>
+                    <p className="text-sm text-red-700">Must have valid code</p>
+                  </div>
+                  
+                  <div className="bg-green-50 border border-green-200 rounded-lg p-4">
+                    <div className="flex items-center justify-center mb-2">
+                      <TrendingUp className="w-6 h-6 text-green-600" />
+                    </div>
+                    <h4 className="font-semibold text-green-900 mb-1">+15% Bonus</h4>
+                    <p className="text-sm text-green-700">Extra mining rewards</p>
+                  </div>
+                  
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                    <div className="flex items-center justify-center mb-2">
+                      <Users className="w-6 h-6 text-blue-600" />
+                    </div>
+                    <h4 className="font-semibold text-blue-900 mb-1">Community</h4>
+                    <p className="text-sm text-blue-700">Connect with miners</p>
+                  </div>
+                </div>
+
+                {/* Referral Input */}
+                <div className="space-y-4">
+                  <div className="text-left">
+                    <Input
+                      label="Referral Code (Required)"
+                      type="text"
+                      placeholder="Enter referral code (e.g., MINER123456)"
+                      value={referralInput}
+                      onChange={(e) => {
+                        setReferralInput(e.target.value.toUpperCase());
+                        setReferralError('');
+                      }}
+                      icon={Key}
+                      error={referralError}
+                      required
+                      className="text-center"
+                    />
+                  </div>
+
+                  <Button
+                    onClick={handleReferralSubmit}
+                    variant="primary"
+                    size="lg"
+                    loading={isValidatingReferral}
+                    disabled={!referralInput.trim()}
+                    className="w-full"
+                    icon={referralInput.trim() ? CheckCircle : Lock}
+                  >
+                    {isValidatingReferral ? 'Validating Code...' : 'Validate & Continue'}
+                  </Button>
+                </div>
+
+                {/* Info */}
+                <div className="mt-6 p-4 bg-red-50 border border-red-200 rounded-lg text-left">
+                  <h5 className="font-medium text-red-900 mb-2 flex items-center">
+                    <Lock className="w-4 h-4 mr-2" />
+                    Required for Mining Access
+                  </h5>
+                  <ul className="text-sm text-red-700 space-y-1">
+                    <li>• A valid referral code is required to start mining</li>
+                    <li>• You will receive a 15% bonus on all mining rewards</li>
+                    <li>• Your referrer also gets rewarded for inviting you</li>
+                    <li>• Contact existing miners to get a referral code</li>
+                  </ul>
+                </div>
+              </div>
+            </Card>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   const statsData = [
     {
       title: 'Current Earnings',
@@ -311,6 +533,37 @@ const EarnPage: React.FC = () => {
             Start your 24-hour mining session and optimize your efficiency for maximum rewards.
           </p>
         </div>
+
+        {/* Referral Status Card */}
+        {referralData.referralCode && (
+          <Card className="mb-6 bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
+                  <Gift className="w-6 h-6 text-purple-600" />
+                </div>
+                <div>
+                  <h3 className="font-semibold text-purple-900">Referral Bonus Active</h3>
+                  <p className="text-sm text-purple-700">
+                    +{((referralData.bonusMultiplier - 1) * 100).toFixed(0)}% mining bonus from code: 
+                    <span className="font-mono font-bold ml-1">{referralData.referralCode}</span>
+                  </p>
+                  {referralData.referrerInfo && (
+                    <p className="text-xs text-purple-600 mt-1">
+                      Referred by: {referralData.referrerInfo.name}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <div className="text-right">
+                <div className="text-lg font-bold text-purple-900">
+                  +{((referralData.bonusMultiplier - 1) * 100).toFixed(0)}%
+                </div>
+                <div className="text-xs text-purple-600">Bonus Rate</div>
+              </div>
+            </div>
+          </Card>
+        )}
 
         {/* Mining Control Panel */}
         <div className="mb-8">
@@ -371,6 +624,11 @@ const EarnPage: React.FC = () => {
                     <div className={`text-xs font-medium mt-1 ${getEfficiencyColor(currentEfficiency)}`}>
                       {currentEfficiency.toFixed(1)}% Efficiency
                     </div>
+                    {referralData.bonusMultiplier > 1 && (
+                      <div className="text-xs text-purple-600 font-medium">
+                        +{((referralData.bonusMultiplier - 1) * 100).toFixed(0)}% Referral Bonus
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -586,14 +844,33 @@ const EarnPage: React.FC = () => {
                 <h4 className="text-sm font-medium text-gray-700 mb-3">Active Efficiency Boosts</h4>
                 <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                   {efficiency.efficiencyBoosts.map((boost) => (
-                    <div key={boost.id} className="bg-green-50 border border-green-200 rounded-lg p-3">
+                    <div key={boost.id} className={`border rounded-lg p-3 ${
+                      boost.source === 'referral' 
+                        ? 'bg-purple-50 border-purple-200' 
+                        : 'bg-green-50 border-green-200'
+                    }`}>
                       <div className="flex items-center justify-between mb-1">
-                        <span className="text-xs font-medium text-green-800">{boost.name}</span>
-                        <span className="text-xs font-bold text-green-900">+{boost.value}%</span>
+                        <span className={`text-xs font-medium ${
+                          boost.source === 'referral' ? 'text-purple-800' : 'text-green-800'
+                        }`}>
+                          {boost.name}
+                        </span>
+                        <span className={`text-xs font-bold ${
+                          boost.source === 'referral' ? 'text-purple-900' : 'text-green-900'
+                        }`}>
+                          +{boost.value}%
+                        </span>
                       </div>
                       {boost.expiresAt && (
-                        <div className="text-xs text-green-600">
+                        <div className={`text-xs ${
+                          boost.source === 'referral' ? 'text-purple-600' : 'text-green-600'
+                        }`}>
                           Expires: {boost.expiresAt.toLocaleTimeString()}
+                        </div>
+                      )}
+                      {boost.source === 'referral' && (
+                        <div className="text-xs text-purple-500 mt-1">
+                          From referral code
                         </div>
                       )}
                     </div>
@@ -670,9 +947,22 @@ const EarnPage: React.FC = () => {
                 </span>
               </div>
               <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Referral Multiplier:</span>
+                <span className={`text-sm font-medium ${
+                  referralData.bonusMultiplier > 1 ? 'text-purple-600' : 'text-gray-900'
+                }`}>
+                  {referralData.bonusMultiplier.toFixed(2)}x
+                  {referralData.bonusMultiplier > 1 && (
+                    <span className="text-xs text-purple-500 ml-1">
+                      (+{((referralData.bonusMultiplier - 1) * 100).toFixed(0)}%)
+                    </span>
+                  )}
+                </span>
+              </div>
+              <div className="flex justify-between items-center">
                 <span className="text-sm text-gray-600">Projected 24h Earnings:</span>
                 <span className="text-sm font-medium text-gray-900">
-                  ₿{(0.024 * (currentEfficiency / 70)).toFixed(6)}
+                  ₿{(0.024 * (currentEfficiency / 70) * referralData.bonusMultiplier).toFixed(6)}
                 </span>
               </div>
               <div className="flex justify-between items-center">

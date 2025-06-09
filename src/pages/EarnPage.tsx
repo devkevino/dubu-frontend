@@ -19,7 +19,8 @@ import {
   Gift,
   Lock,
   Unlock,
-  Key
+  Key,
+  Info
 } from 'lucide-react';
 import { Button, StatsCard, Card, Input } from '../components/ui';
 
@@ -635,447 +636,174 @@ const EarnPage: React.FC = () => {
           ))}
         </div>
 
-        {/* Hash Rate Management Section */}
-        <div className="mb-8">
+        {/* Combined Management Section - Simplified */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
+          {/* Hash Rate Section */}
           <Card>
-            <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900 flex items-center">
                 <Zap className="w-5 h-5 mr-2" />
-                Hash Rate Management
+                Hash Rate Boost
               </h3>
-              <div className="text-right">
-                <div className="text-lg font-bold text-orange-600">
-                  {hashRateData.current.toFixed(1)} TH/s
-                </div>
-                <div className="text-xs text-gray-500">
-                  {((hashRateData.current / hashRateData.maximum) * 100).toFixed(0)}% of maximum
-                </div>
+              <div className="text-sm font-bold text-orange-600">
+                {hashRateData.current.toFixed(1)} / {hashRateData.maximum} TH/s
               </div>
             </div>
 
-            {/* Hash Rate Progress Bar */}
-            <div className="mb-6">
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium text-gray-700">Current Hash Rate</span>
-                <span className="text-sm text-gray-500">
-                  {hashRateData.current.toFixed(1)} / {hashRateData.maximum} TH/s
+            {/* Compact Progress Bar */}
+            <div className="mb-4">
+              <div className="w-full bg-gray-200 rounded-full h-2">
+                <div 
+                  className="h-2 rounded-full transition-all duration-500 bg-gradient-to-r from-orange-400 to-red-500"
+                  style={{ width: `${(hashRateData.current / hashRateData.maximum) * 100}%` }}
+                />
+              </div>
+            </div>
+
+            {/* Boosts Summary */}
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600 flex items-center">
+                  <Flame className="w-3 h-3 mr-1.5" />
+                  Streak Bonus ({efficiency.consecutiveDays}d)
+                </span>
+                <span className="font-medium text-blue-600">+{hashRateData.consecutiveDaysBonus.toFixed(1)} TH/s</span>
+              </div>
+              
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600 flex items-center">
+                  <CheckCircle className={`w-3 h-3 mr-1.5 ${efficiency.dailyActivityCompleted ? 'text-green-500' : ''}`} />
+                  Daily Check-in
+                </span>
+                <span className={`font-medium ${efficiency.dailyActivityCompleted ? 'text-green-600' : 'text-gray-400'}`}>
+                  +{hashRateData.dailyCheckInBonus.toFixed(1)} TH/s
                 </span>
               </div>
               
-              <div className="w-full bg-gray-200 rounded-full h-4 mb-2">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600 flex items-center">
+                  <Users className="w-3 h-3 mr-1.5" />
+                  Team ({teamData.memberCount})
+                </span>
+                <span className="font-medium text-purple-600">+{hashRateData.teamBonus.toFixed(1)} TH/s</span>
+              </div>
+            </div>
+
+            {/* Quick Actions */}
+            {!efficiency.dailyActivityCompleted && (
+              <Button
+                onClick={handleDailyActivity}
+                variant="primary"
+                size="sm"
+                className="w-full mt-4"
+                icon={CheckCircle}
+              >
+                Complete Daily Check-in (+1.0 TH/s)
+              </Button>
+            )}
+            
+            {hashRateData.current >= hashRateData.maximum && (
+              <div className="mt-4 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
+                <div className="flex items-center justify-center text-xs">
+                  <Award className="w-3 h-3 mr-1 text-yellow-600" />
+                  <span className="text-yellow-700 font-medium">Maximum Hash Rate Achieved!</span>
+                </div>
+              </div>
+            )}
+          </Card>
+
+          {/* Efficiency Section */}
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                <Activity className="w-5 h-5 mr-2" />
+                Efficiency Status
+              </h3>
+              <div className={`text-sm font-bold ${getEfficiencyColor(currentEfficiency)}`}>
+                {currentEfficiency.toFixed(1)}% • {getEfficiencyGrade(currentEfficiency)}
+              </div>
+            </div>
+
+            {/* Compact Progress Bar */}
+            <div className="mb-4">
+              <div className="w-full bg-gray-200 rounded-full h-2">
                 <div 
-                  className="h-4 rounded-full transition-all duration-500 bg-gradient-to-r from-orange-400 to-red-500"
+                  className="h-2 rounded-full transition-all duration-500"
                   style={{ 
-                    width: `${(hashRateData.current / hashRateData.maximum) * 100}%`
+                    width: `${Math.min(currentEfficiency, 100)}%`,
+                    background: currentEfficiency >= 90 ? 
+                      'linear-gradient(90deg, #10B981, #059669)' :
+                      currentEfficiency >= 80 ?
+                      'linear-gradient(90deg, #3B82F6, #2563EB)' :
+                      currentEfficiency >= 70 ?
+                      'linear-gradient(90deg, #F59E0B, #D97706)' :
+                      'linear-gradient(90deg, #EF4444, #DC2626)'
                   }}
                 />
               </div>
+            </div>
+
+            {/* Efficiency Factors */}
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600 flex items-center">
+                  <Wrench className={`w-3 h-3 mr-1.5 ${efficiency.lastMaintenance >= 4 ? 'text-orange-500' : ''}`} />
+                  Maintenance
+                </span>
+                <span className={`font-medium ${efficiency.lastMaintenance >= 4 ? 'text-orange-600' : 'text-green-600'}`}>
+                  {efficiency.lastMaintenance >= 4 ? `${efficiency.lastMaintenance.toFixed(1)}h ago` : 'Good'}
+                </span>
+              </div>
               
-              <div className="flex justify-between text-xs text-gray-500">
-                <span>Base: {hashRateData.base} TH/s</span>
-                <span>Maximum: {hashRateData.maximum} TH/s</span>
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600 flex items-center">
+                  <Flame className="w-3 h-3 mr-1.5" />
+                  Login Streak
+                </span>
+                <span className="font-medium text-blue-600">
+                  {efficiency.consecutiveDays} days (+{Math.min(efficiency.consecutiveDays * 0.8, 15).toFixed(1)}%)
+                </span>
+              </div>
+              
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600 flex items-center">
+                  <Target className="w-3 h-3 mr-1.5" />
+                  Active Boosts
+                </span>
+                <span className="font-medium text-green-600">
+                  +{efficiency.efficiencyBoosts.reduce((sum, boost) => sum + boost.value, 0).toFixed(1)}%
+                </span>
               </div>
             </div>
 
-            {/* Hash Rate Breakdown */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              {/* Current Breakdown */}
-              <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Hash Rate Breakdown</h4>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600">Base Rate</span>
-                    <span className="text-sm font-medium text-gray-900">
-                      {hashRateData.base.toFixed(1)} TH/s
-                    </span>
-                  </div>
-                  
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600 flex items-center">
-                      <Flame className="w-3 h-3 mr-1 text-blue-500" />
-                      Login Streak ({efficiency.consecutiveDays} days)
-                    </span>
-                    <span className="text-sm font-medium text-blue-600">
-                      +{hashRateData.consecutiveDaysBonus.toFixed(1)} TH/s
-                    </span>
-                  </div>
-                  
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600 flex items-center">
-                      <CheckCircle className="w-3 h-3 mr-1 text-green-500" />
-                      Daily Check-in
-                    </span>
-                    <span className={`text-sm font-medium ${
-                      efficiency.dailyActivityCompleted ? 'text-green-600' : 'text-gray-400'
-                    }`}>
-                      +{hashRateData.dailyCheckInBonus.toFixed(1)} TH/s
-                    </span>
-                  </div>
-                  
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-600 flex items-center">
-                      <Users className="w-3 h-3 mr-1 text-purple-500" />
-                      Team Bonus ({teamData.memberCount} members)
-                    </span>
-                    <span className="text-sm font-medium text-purple-600">
-                      +{hashRateData.teamBonus.toFixed(1)} TH/s
-                    </span>
-                  </div>
-                  
-                  <div className="pt-2 border-t border-gray-200">
-                    <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium text-gray-900">Total Hash Rate</span>
-                      <span className="text-sm font-bold text-orange-600">
-                        {hashRateData.current.toFixed(1)} TH/s
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Potential Improvements */}
-              <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Potential Improvements</h4>
-                <div className="space-y-3">
-                  {/* Login Streak Improvement */}
-                  {hashRateData.consecutiveDaysBonus < 2.0 && (
-                    <div className="p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium text-blue-900">Login Streak</span>
-                        <span className="text-xs text-blue-600">
-                          +{(2.0 - hashRateData.consecutiveDaysBonus).toFixed(1)} TH/s potential
-                        </span>
-                      </div>
-                      <p className="text-xs text-blue-700">
-                        {Math.ceil((2.0 - hashRateData.consecutiveDaysBonus) / 0.2)} more consecutive days needed
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Daily Check-in */}
-                  {!efficiency.dailyActivityCompleted && (
-                    <div className="p-3 bg-green-50 border border-green-200 rounded-lg">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium text-green-900">Daily Check-in</span>
-                        <span className="text-xs text-green-600">+1.0 TH/s available</span>
-                      </div>
-                      <p className="text-xs text-green-700">Complete today's check-in below</p>
-                    </div>
-                  )}
-
-                  {/* Team Bonus */}
-                  {hashRateData.teamBonus < 10.0 && (
-                    <div className="p-3 bg-purple-50 border border-purple-200 rounded-lg">
-                      <div className="flex items-center justify-between mb-1">
-                        <span className="text-sm font-medium text-purple-900">Team Building</span>
-                        <span className="text-xs text-purple-600">
-                          +{(10.0 - hashRateData.teamBonus).toFixed(1)} TH/s potential
-                        </span>
-                      </div>
-                      <p className="text-xs text-purple-700">
-                        Invite {Math.ceil((10.0 - hashRateData.teamBonus) / 0.1)} more team members
-                      </p>
-                    </div>
-                  )}
-
-                  {/* Maximum Reached */}
-                  {hashRateData.current >= hashRateData.maximum && (
-                    <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                      <div className="flex items-center justify-center">
-                        <Award className="w-4 h-4 mr-2 text-yellow-600" />
-                        <span className="text-sm font-medium text-yellow-900">
-                          Maximum Hash Rate Achieved!
-                        </span>
-                      </div>
-                      <p className="text-xs text-yellow-700 text-center mt-1">
-                        You've unlocked the full mining potential
-                      </p>
-                    </div>
-                  )}
-                </div>
-              </div>
-            </div>
-
-            {/* Quick Actions for Hash Rate */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {/* Daily Check-in Action */}
-              <button
-                onClick={handleDailyActivity}
-                disabled={efficiency.dailyActivityCompleted}
-                className={`p-4 rounded-lg border text-left transition-all ${
-                  !efficiency.dailyActivityCompleted 
-                    ? 'border-green-200 hover:border-green-300 bg-green-50 hover:bg-green-100' 
-                    : 'border-gray-200 bg-gray-50 cursor-not-allowed'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center">
-                    <CheckCircle className={`w-5 h-5 mr-2 ${
-                      !efficiency.dailyActivityCompleted ? 'text-green-600' : 'text-gray-400'
-                    }`} />
-                    <span className={`font-medium ${
-                      !efficiency.dailyActivityCompleted ? 'text-green-900' : 'text-gray-500'
-                    }`}>
-                      Daily Check-in
-                    </span>
-                  </div>
-                  {efficiency.dailyActivityCompleted && (
-                    <CheckCircle className="w-4 h-4 text-green-500" />
-                  )}
-                </div>
-                <div className={`text-sm ${
-                  !efficiency.dailyActivityCompleted ? 'text-green-700' : 'text-gray-500'
-                }`}>
-                  {efficiency.dailyActivityCompleted 
-                    ? 'Completed for today' 
-                    : 'Get +1.0 TH/s bonus'
-                  }
-                </div>
-              </button>
-
-              {/* Team Building (Placeholder) */}
-              <div className="p-4 rounded-lg border border-purple-200 bg-purple-50 text-left">
-                <div className="flex items-center mb-2">
-                  <Users className="w-5 h-5 mr-2 text-purple-600" />
-                  <span className="font-medium text-purple-900">Team Building</span>
-                </div>
-                <div className="text-sm text-purple-700 mb-1">
-                  {teamData.memberCount} / {teamData.maxMembers} members
-                </div>
-                <div className="text-xs text-purple-600">
-                  Each member: +0.1 TH/s (max +10.0 TH/s)
-                </div>
-              </div>
-
-              {/* Login Streak Info */}
-              <div className="p-4 rounded-lg border border-blue-200 bg-blue-50 text-left">
-                <div className="flex items-center mb-2">
-                  <Flame className="w-5 h-5 mr-2 text-blue-600" />
-                  <span className="font-medium text-blue-900">Login Streak</span>
-                </div>
-                <div className="text-sm text-blue-700 mb-1">
-                  {efficiency.consecutiveDays} consecutive days
-                </div>
-                <div className="text-xs text-blue-600">
-                  Current bonus: +{hashRateData.consecutiveDaysBonus.toFixed(1)} TH/s
-                </div>
-                <div className="text-xs text-blue-500 mt-1">
-                  {hashRateData.consecutiveDaysBonus < 2.0 ? 
-                    `Max bonus in ${Math.ceil((2.0 - hashRateData.consecutiveDaysBonus) / 0.2)} days` :
-                    'Maximum streak bonus achieved!'
-                  }
-                </div>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        {/* Efficiency Management Section */}
-        <div className="mb-8">
-          <Card>
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                <Settings className="w-5 h-5 mr-2" />
-                Efficiency Management
-              </h3>
-              <div className={`text-sm font-medium ${getEfficiencyColor(currentEfficiency)}`}>
-                {getEfficiencyGrade(currentEfficiency)} Grade
-              </div>
-            </div>
-
-            {/* Efficiency Overview */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
-              {/* Efficiency Gauge */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <span className="text-sm font-medium text-gray-700">Current Efficiency</span>
-                  <span className={`text-lg font-bold ${getEfficiencyColor(currentEfficiency)}`}>
-                    {currentEfficiency.toFixed(1)}%
-                  </span>
-                </div>
-                
-                {/* Progress Bar */}
-                <div className="w-full bg-gray-200 rounded-full h-3 mb-2">
-                  <div 
-                    className="h-3 rounded-full transition-all duration-500"
-                    style={{ 
-                      width: `${Math.min(currentEfficiency, 100)}%`,
-                      background: currentEfficiency >= 90 ? 
-                        'linear-gradient(90deg, #10B981, #059669)' :
-                        currentEfficiency >= 80 ?
-                        'linear-gradient(90deg, #3B82F6, #2563EB)' :
-                        currentEfficiency >= 70 ?
-                        'linear-gradient(90deg, #F59E0B, #D97706)' :
-                        'linear-gradient(90deg, #EF4444, #DC2626)'
-                    }}
-                  />
-                </div>
-                
-                <div className="flex justify-between text-xs text-gray-500">
-                  <span>50%</span>
-                  <span>Target: {efficiency.target}%</span>
-                  <span>100%</span>
-                </div>
-              </div>
-
-              {/* Quick Stats */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="text-center p-3 bg-blue-50 rounded-lg">
-                  <div className="flex items-center justify-center mb-1">
-                    <Flame className="w-4 h-4 text-blue-600 mr-1" />
-                    <span className="text-xs text-blue-600 font-medium">Streak</span>
-                  </div>
-                  <div className="text-lg font-bold text-blue-900">{efficiency.consecutiveDays}</div>
-                  <div className="text-xs text-blue-600">days</div>
-                </div>
-                
-                <div className="text-center p-3 bg-green-50 rounded-lg">
-                  <div className="flex items-center justify-center mb-1">
-                    <TrendingUp className="w-4 h-4 text-green-600 mr-1" />
-                    <span className="text-xs text-green-600 font-medium">Bonus</span>
-                  </div>
-                  <div className="text-lg font-bold text-green-900">
-                    +{efficiency.efficiencyBoosts.reduce((sum, boost) => sum + boost.value, 0).toFixed(1)}%
-                  </div>
-                  <div className="text-xs text-green-600">active</div>
-                </div>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-              {/* Maintenance Button */}
-              <button
+            {/* Quick Actions */}
+            {efficiency.lastMaintenance >= 4 && (
+              <Button
                 onClick={handleMaintenance}
-                disabled={efficiency.lastMaintenance < 4}
-                className={`p-4 rounded-lg border text-left transition-all ${
-                  efficiency.lastMaintenance >= 4 
-                    ? 'border-orange-200 hover:border-orange-300 bg-orange-50 hover:bg-orange-100' 
-                    : 'border-gray-200 bg-gray-50 cursor-not-allowed'
-                }`}
+                variant="outline"
+                size="sm"
+                className="w-full mt-4 border-orange-300 text-orange-700 hover:bg-orange-50"
+                icon={Wrench}
               >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center">
-                    <Wrench className={`w-5 h-5 mr-2 ${
-                      efficiency.lastMaintenance >= 4 ? 'text-orange-600' : 'text-gray-400'
-                    }`} />
-                    <span className={`font-medium ${
-                      efficiency.lastMaintenance >= 4 ? 'text-orange-900' : 'text-gray-500'
-                    }`}>
-                      Maintenance
-                    </span>
-                  </div>
-                  {efficiency.lastMaintenance < 4 && (
-                    <CheckCircle className="w-4 h-4 text-green-500" />
-                  )}
-                </div>
-                <div className={`text-sm ${
-                  efficiency.lastMaintenance >= 4 ? 'text-orange-700' : 'text-gray-500'
-                }`}>
-                  {efficiency.lastMaintenance >= 4 
-                    ? `${efficiency.lastMaintenance.toFixed(1)}h ago - Click to maintain` 
-                    : `${(4 - efficiency.lastMaintenance).toFixed(1)}h until next maintenance`
-                  }
-                </div>
-                {efficiency.lastMaintenance >= 4 && (
-                  <div className="text-xs text-orange-600 mt-1">+3% efficiency boost</div>
-                )}
-              </button>
-
-              {/* Daily Activity */}
-              <button
-                onClick={handleDailyActivity}
-                disabled={efficiency.dailyActivityCompleted}
-                className={`p-4 rounded-lg border text-left transition-all ${
-                  !efficiency.dailyActivityCompleted 
-                    ? 'border-blue-200 hover:border-blue-300 bg-blue-50 hover:bg-blue-100' 
-                    : 'border-gray-200 bg-gray-50 cursor-not-allowed'
-                }`}
-              >
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center">
-                    <Calendar className={`w-5 h-5 mr-2 ${
-                      !efficiency.dailyActivityCompleted ? 'text-blue-600' : 'text-gray-400'
-                    }`} />
-                    <span className={`font-medium ${
-                      !efficiency.dailyActivityCompleted ? 'text-blue-900' : 'text-gray-500'
-                    }`}>
-                      Daily Activity
-                    </span>
-                  </div>
-                  {efficiency.dailyActivityCompleted && (
-                    <CheckCircle className="w-4 h-4 text-green-500" />
-                  )}
-                </div>
-                <div className={`text-sm ${
-                  !efficiency.dailyActivityCompleted ? 'text-blue-700' : 'text-gray-500'
-                }`}>
-                  {efficiency.dailyActivityCompleted 
-                    ? 'Completed for today' 
-                    : 'Complete daily check-in'
-                  }
-                </div>
-                {!efficiency.dailyActivityCompleted && (
-                  <div className="text-xs text-blue-600 mt-1">+5% efficiency boost</div>
-                )}
-              </button>
-
-              {/* Streak Info */}
-              <div className="p-4 rounded-lg border border-purple-200 bg-purple-50 text-left">
-                <div className="flex items-center mb-2">
-                  <Award className="w-5 h-5 mr-2 text-purple-600" />
-                  <span className="font-medium text-purple-900">Mining Streak</span>
-                </div>
-                <div className="text-sm text-purple-700 mb-1">
-                  {efficiency.consecutiveDays} consecutive days
-                </div>
-                <div className="text-xs text-purple-600">
-                  +{Math.min(efficiency.consecutiveDays * 0.8, 15).toFixed(1)}% efficiency bonus
-                </div>
-                <div className="text-xs text-purple-500 mt-1">
-                  Next milestone: {Math.ceil(efficiency.consecutiveDays / 5) * 5} days
-                </div>
-              </div>
-            </div>
-
-            {/* Active Boosts */}
+                Perform Maintenance (+3% efficiency)
+              </Button>
+            )}
+            
+            {/* Active Boosts Indicator */}
             {efficiency.efficiencyBoosts.length > 0 && (
-              <div>
-                <h4 className="text-sm font-medium text-gray-700 mb-3">Active Efficiency Boosts</h4>
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                  {efficiency.efficiencyBoosts.map((boost) => (
-                    <div key={boost.id} className={`border rounded-lg p-3 ${
+              <div className="mt-4 flex flex-wrap gap-1">
+                {efficiency.efficiencyBoosts.map((boost) => (
+                  <span
+                    key={boost.id}
+                    className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
                       boost.source === 'referral' 
-                        ? 'bg-purple-50 border-purple-200' 
-                        : 'bg-green-50 border-green-200'
-                    }`}>
-                      <div className="flex items-center justify-between mb-1">
-                        <span className={`text-xs font-medium ${
-                          boost.source === 'referral' ? 'text-purple-800' : 'text-green-800'
-                        }`}>
-                          {boost.name}
-                        </span>
-                        <span className={`text-xs font-bold ${
-                          boost.source === 'referral' ? 'text-purple-900' : 'text-green-900'
-                        }`}>
-                          +{boost.value}%
-                        </span>
-                      </div>
-                      {boost.expiresAt && (
-                        <div className={`text-xs ${
-                          boost.source === 'referral' ? 'text-purple-600' : 'text-green-600'
-                        }`}>
-                          Expires: {boost.expiresAt.toLocaleTimeString()}
-                        </div>
-                      )}
-                      {boost.source === 'referral' && (
-                        <div className="text-xs text-purple-500 mt-1">
-                          From referral code
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </div>
+                        ? 'bg-purple-100 text-purple-700' 
+                        : 'bg-green-100 text-green-700'
+                    }`}
+                  >
+                    +{boost.value}%
+                  </span>
+                ))}
               </div>
             )}
           </Card>
@@ -1111,85 +839,74 @@ const EarnPage: React.FC = () => {
             </div>
           </Card>
 
-          {/* Real-time Mining Stats */}
+          {/* Real-time Mining Stats - Simplified */}
           <Card>
-            <h3 className="text-lg font-semibold text-gray-900 mb-6">Real-time Stats</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-6">Live Statistics</h3>
             
-            {/* Hash Rate Chart Placeholder */}
-            <div className="h-40 bg-gray-50 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-200 mb-6">
-              <div className="text-center">
-                <Activity className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                <p className="text-sm text-gray-500">Performance Chart</p>
-                <p className="text-xs text-gray-400">Hash Rate × Efficiency</p>
+            {/* Key Metrics Grid */}
+            <div className="grid grid-cols-2 gap-4 mb-6">
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-xs text-gray-500 mb-1">Hash Rate</div>
+                <div className="text-lg font-bold text-orange-600">{hashRate.toFixed(2)} TH/s</div>
+                <div className="text-xs text-gray-600">Live</div>
+              </div>
+              
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-xs text-gray-500 mb-1">Efficiency</div>
+                <div className={`text-lg font-bold ${getEfficiencyColor(currentEfficiency)}`}>
+                  {currentEfficiency.toFixed(1)}%
+                </div>
+                <div className="text-xs text-gray-600">{getEfficiencyGrade(currentEfficiency)}</div>
+              </div>
+              
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-xs text-gray-500 mb-1">Session Time</div>
+                <div className="text-lg font-bold text-gray-900">{formatTime(miningTime)}</div>
+                <div className="text-xs text-gray-600">
+                  {miningTime < TOTAL_MINING_TIME ? 'Active' : 'Complete'}
+                </div>
+              </div>
+              
+              <div className="bg-gray-50 rounded-lg p-3">
+                <div className="text-xs text-gray-500 mb-1">Earnings</div>
+                <div className="text-lg font-bold text-green-600">₿{earnings.toFixed(6)}</div>
+                <div className="text-xs text-gray-600">Current</div>
               </div>
             </div>
 
-            {/* Current Session Info */}
-            <div className="space-y-4">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Session Start:</span>
-                <span className="text-sm font-medium text-gray-900">
-                  {miningTime > 0 ? new Date(Date.now() - miningTime * 1000).toLocaleTimeString() : '--:--:--'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Estimated Completion:</span>
-                <span className="text-sm font-medium text-gray-900">
-                  {miningTime > 0 && miningTime < TOTAL_MINING_TIME ? 
-                   new Date(Date.now() + (TOTAL_MINING_TIME - miningTime) * 1000).toLocaleTimeString() : 
-                   '--:--:--'}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Current Hash Rate:</span>
-                <span className="text-sm font-medium text-orange-600">
-                  {hashRate.toFixed(2)} TH/s
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Base Hash Rate:</span>
-                <span className="text-sm font-medium text-gray-900">
-                  {hashRateData.base.toFixed(1)} TH/s
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Hash Rate Bonus:</span>
-                <span className="text-sm font-medium text-orange-600">
-                  +{(hashRateData.current - hashRateData.base).toFixed(1)} TH/s
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Efficiency Multiplier:</span>
-                <span className={`text-sm font-medium ${getEfficiencyColor(currentEfficiency)}`}>
-                  {(currentEfficiency / 70).toFixed(2)}x
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Referral Multiplier:</span>
-                <span className={`text-sm font-medium ${
-                  referralData.bonusMultiplier > 1 ? 'text-purple-600' : 'text-gray-900'
-                }`}>
-                  {referralData.bonusMultiplier.toFixed(2)}x
-                  {referralData.bonusMultiplier > 1 && (
-                    <span className="text-xs text-purple-500 ml-1">
-                      (+{((referralData.bonusMultiplier - 1) * 100).toFixed(0)}%)
-                    </span>
-                  )}
-                </span>
-              </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Projected 24h Earnings:</span>
-                <span className="text-sm font-medium text-gray-900">
+            {/* Session Details */}
+            <div className="border-t border-gray-200 pt-4 space-y-3">
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-600">Projected 24h Earnings</span>
+                <span className="font-medium text-gray-900">
                   ₿{(0.024 * (hashRateData.current / hashRateData.base) * (currentEfficiency / 70) * referralData.bonusMultiplier).toFixed(6)}
                 </span>
               </div>
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Interruptions:</span>
-                <span className={`text-sm font-medium ${
-                  efficiency.interruptionCount === 0 ? 'text-green-600' : 'text-red-600'
-                }`}>
-                  {efficiency.interruptionCount} times
+              
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-600">Total Multiplier</span>
+                <span className="font-medium text-purple-600">
+                  {((hashRateData.current / hashRateData.base) * (currentEfficiency / 70) * referralData.bonusMultiplier).toFixed(2)}x
                 </span>
+              </div>
+              
+              {miningTime > 0 && miningTime < TOTAL_MINING_TIME && (
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-600">Est. Completion</span>
+                  <span className="font-medium text-gray-900">
+                    {new Date(Date.now() + (TOTAL_MINING_TIME - miningTime) * 1000).toLocaleTimeString()}
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {/* Info Note */}
+            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+              <div className="flex items-start space-x-2">
+                <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
+                <p className="text-xs text-blue-700">
+                  Maximize earnings by maintaining high efficiency and completing daily activities.
+                </p>
               </div>
             </div>
           </Card>

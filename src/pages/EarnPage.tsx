@@ -20,7 +20,9 @@ import {
   Lock,
   Unlock,
   Key,
-  Info
+  Info,
+  BarChart3,
+  LineChart
 } from 'lucide-react';
 import { Button, StatsCard, Card, Input } from '../components/ui';
 
@@ -64,6 +66,16 @@ interface ReferralData {
     totalEarnings: string;
   };
   bonusMultiplier: number;
+}
+
+// 수익 분석 데이터 인터페이스
+interface EarningsAnalysis {
+  totalEarnings: number;
+  lastDayProfit: number;
+  thirtyDayProfit: number;
+  avgDailyEarnings: number;
+  bestDailyRecord: number;
+  projectedMonthly: number;
 }
 
 const EarnPage: React.FC = () => {
@@ -133,6 +145,16 @@ const EarnPage: React.FC = () => {
         source: 'referral'
       }
     ]
+  });
+
+  // 수익 분석 데이터 (임시)
+  const [earningsAnalysis, setEarningsAnalysis] = useState<EarningsAnalysis>({
+    totalEarnings: 1.234567,
+    lastDayProfit: 0.024567,
+    thirtyDayProfit: 0.689432,
+    avgDailyEarnings: 0.022980,
+    bestDailyRecord: 0.035674,
+    projectedMonthly: 0.689400
   });
 
   // 24시간 = 86400초
@@ -804,7 +826,7 @@ const EarnPage: React.FC = () => {
           </Card>
         </div>
 
-        {/* Mining History and Real-time Stats */}
+        {/* Earnings Analysis and Mining History */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Mining History */}
           <Card>
@@ -834,74 +856,89 @@ const EarnPage: React.FC = () => {
             </div>
           </Card>
 
-          {/* Real-time Mining Stats - Simplified */}
+          {/* Earn Analysis - New Improved Section */}
           <Card>
-            <h3 className="text-lg font-semibold text-gray-900 mb-6">Live Statistics</h3>
+            <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
+              <BarChart3 className="w-5 h-5 mr-2" />
+              Earn Analysis
+            </h3>
             
-            {/* Key Metrics Grid */}
-            <div className="grid grid-cols-2 gap-4 mb-6">
-              <div className="bg-gray-50 rounded-lg p-3">
-                <div className="text-xs text-gray-500 mb-1">Hash Rate</div>
-                <div className="text-lg font-bold text-orange-600">{hashRate.toFixed(2)} TH/s</div>
-                <div className="text-xs text-gray-600">Live</div>
+            {/* Top Metrics Grid */}
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              <div className="bg-blue-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-blue-600 mb-1">Total Earnings</div>
+                <div className="text-lg font-bold text-blue-900">₿{earningsAnalysis.totalEarnings.toFixed(6)}</div>
+                <div className="text-xs text-blue-600">All Time</div>
               </div>
               
-              <div className="bg-gray-50 rounded-lg p-3">
-                <div className="text-xs text-gray-500 mb-1">Efficiency</div>
-                <div className={`text-lg font-bold ${getEfficiencyColor(currentEfficiency)}`}>
-                  {currentEfficiency.toFixed(1)}%
-                </div>
-                <div className="text-xs text-gray-600">{getEfficiencyGrade(currentEfficiency)}</div>
+              <div className="bg-green-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-green-600 mb-1">Last Day Profit</div>
+                <div className="text-lg font-bold text-green-900">₿{earningsAnalysis.lastDayProfit.toFixed(6)}</div>
+                <div className="text-xs text-green-600">24h</div>
               </div>
               
-              <div className="bg-gray-50 rounded-lg p-3">
-                <div className="text-xs text-gray-500 mb-1">Session Time</div>
-                <div className="text-lg font-bold text-gray-900">{formatTime(miningTime)}</div>
-                <div className="text-xs text-gray-600">
-                  {miningTime < TOTAL_MINING_TIME ? 'Active' : 'Complete'}
-                </div>
-              </div>
-              
-              <div className="bg-gray-50 rounded-lg p-3">
-                <div className="text-xs text-gray-500 mb-1">Earnings</div>
-                <div className="text-lg font-bold text-green-600">₿{earnings.toFixed(6)}</div>
-                <div className="text-xs text-gray-600">Current</div>
+              <div className="bg-purple-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-purple-600 mb-1">30-Day Profit</div>
+                <div className="text-lg font-bold text-purple-900">₿{earningsAnalysis.thirtyDayProfit.toFixed(6)}</div>
+                <div className="text-xs text-purple-600">Monthly</div>
               </div>
             </div>
 
-            {/* Session Details */}
+            {/* Daily Rewards Chart Section */}
+            <div className="mb-6">
+              <h4 className="text-md font-medium text-gray-900 mb-4 flex items-center">
+                <LineChart className="w-4 h-4 mr-2" />
+                Daily Rewards
+              </h4>
+              
+              {/* Chart Placeholder - Same as Dashboard */}
+              <div className="h-48 bg-gray-50 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-200">
+                <div className="text-center">
+                  <TrendingUp className="w-8 h-8 text-gray-400 mx-auto mb-2" />
+                  <p className="text-gray-500 text-sm mb-1">Daily rewards chart</p>
+                  <p className="text-xs text-gray-400">Real chart integration needed</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Additional Metrics */}
             <div className="border-t border-gray-200 pt-4 space-y-3">
               <div className="flex justify-between items-center text-sm">
-                <span className="text-gray-600">Projected 24h Earnings</span>
-                <span className="font-medium text-gray-900">
-                  ₿{(0.024 * (hashRateData.current / hashRateData.base) * (currentEfficiency / 70) * referralData.bonusMultiplier).toFixed(6)}
-                </span>
+                <span className="text-gray-600">Average Daily</span>
+                <span className="font-medium text-gray-900">₿{earningsAnalysis.avgDailyEarnings.toFixed(6)}</span>
               </div>
               
               <div className="flex justify-between items-center text-sm">
-                <span className="text-gray-600">Total Multiplier</span>
-                <span className="font-medium text-purple-600">
-                  {((hashRateData.current / hashRateData.base) * (currentEfficiency / 70) * referralData.bonusMultiplier).toFixed(2)}x
-                </span>
+                <span className="text-gray-600">Best Daily Record</span>
+                <span className="font-medium text-green-600">₿{earningsAnalysis.bestDailyRecord.toFixed(6)}</span>
+              </div>
+              
+              <div className="flex justify-between items-center text-sm">
+                <span className="text-gray-600">Projected Monthly</span>
+                <span className="font-medium text-blue-600">₿{earningsAnalysis.projectedMonthly.toFixed(6)}</span>
               </div>
               
               {miningTime > 0 && miningTime < TOTAL_MINING_TIME && (
                 <div className="flex justify-between items-center text-sm">
-                  <span className="text-gray-600">Est. Completion</span>
+                  <span className="text-gray-600">Session Progress</span>
                   <span className="font-medium text-gray-900">
-                    {new Date(Date.now() + (TOTAL_MINING_TIME - miningTime) * 1000).toLocaleTimeString()}
+                    {progressPercentage.toFixed(1)}% ({formatTime(miningTime)} / 24h)
                   </span>
                 </div>
               )}
             </div>
 
-            {/* Info Note */}
-            <div className="mt-4 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+            {/* Performance Indicator */}
+            <div className="mt-4 p-3 bg-gradient-to-r from-orange-50 to-yellow-50 border border-orange-200 rounded-lg">
               <div className="flex items-start space-x-2">
-                <Info className="w-4 h-4 text-blue-600 mt-0.5 flex-shrink-0" />
-                <p className="text-xs text-blue-700">
-                  Maximize earnings by maintaining high efficiency and completing daily activities.
-                </p>
+                <Info className="w-4 h-4 text-orange-600 mt-0.5 flex-shrink-0" />
+                <div>
+                  <p className="text-xs text-orange-700 font-medium">Performance Tip</p>
+                  <p className="text-xs text-orange-600 mt-1">
+                    Maintain {currentEfficiency >= 85 ? 'your excellent' : 'high'} efficiency 
+                    {currentEfficiency < 85 && ' (target: 85%+)'} for maximum daily rewards.
+                  </p>
+                </div>
               </div>
             </div>
           </Card>

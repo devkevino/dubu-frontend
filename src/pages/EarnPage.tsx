@@ -590,11 +590,6 @@ const EarnPage: React.FC = () => {
                     <div className={`text-xs font-medium mt-1 ${getEfficiencyColor(currentEfficiency)}`}>
                       {currentEfficiency.toFixed(1)}% Efficiency
                     </div>
-                    {referralData.bonusMultiplier > 1 && (
-                      <div className="text-xs text-purple-600 font-medium">
-                        +{((referralData.bonusMultiplier - 1) * 100).toFixed(0)}% Referral Bonus
-                      </div>
-                    )}
                   </div>
                 </div>
               </div>

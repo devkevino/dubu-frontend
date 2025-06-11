@@ -6,6 +6,7 @@ import {
   Zap, 
   Users, 
   Wallet,
+  CreditCard,
   Settings,
   ChevronLeft,
   ChevronRight,
@@ -116,6 +117,11 @@ const Sidebar: React.FC<SidebarProps> = ({ collapsed, onToggle }) => {
       icon: Wallet,
       label: 'Wallet',
       path: '/wallet'
+    },
+    {
+      icon: CreditCard,
+      label: 'Card',
+      path: '/card'
     },
     {
       icon: Settings,

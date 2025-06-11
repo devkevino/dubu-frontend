@@ -5,6 +5,7 @@ import DashboardPage from './pages/DashboardPage';
 import EarnPage from './pages/EarnPage';
 import TeamPage from './pages/TeamPage';
 import WalletPage from './pages/WalletPage';
+import CardPage from './pages/CardPage';
 import SettingsPage from './pages/SettingsPage';
 import AppLayout from './components/layout/AppLayout';
 import { useWeb3Auth } from './providers/Web3AuthProvider';
@@ -102,6 +103,15 @@ const AppRouter: React.FC = () => {
         element={
           <ProtectedRoute>
             <WalletPage />
+          </ProtectedRoute>
+        } 
+      />
+      
+      <Route 
+        path="/card" 
+        element={
+          <ProtectedRoute>
+            <CardPage />
           </ProtectedRoute>
         } 
       />

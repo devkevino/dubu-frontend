@@ -4,7 +4,8 @@ import {
   LayoutDashboard,
   Zap, 
   Users, 
-  Wallet
+  Wallet,
+  CreditCard
 } from 'lucide-react';
 
 interface NavItemProps {
@@ -63,6 +64,11 @@ const MobileNavigation: React.FC = () => {
       icon: Users,
       label: 'Team',
       path: '/team'
+    },
+    {
+      icon: CreditCard,
+      label: 'Card',
+      path: '/card'
     },
     {
       icon: Wallet,

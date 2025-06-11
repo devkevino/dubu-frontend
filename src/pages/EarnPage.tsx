@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   Play, 
   Pause, 
@@ -22,25 +22,38 @@ import {
   Key,
   Info,
   BarChart3,
-  LineChart
+  LineChart,
+  Star,
+  Sparkles,
+  Crown,
+  Facebook,
+  Twitter,
+  Instagram,
+  Youtube,
+  Plus,
+  Dice6,
+  ExternalLink,
+  UserPlus
 } from 'lucide-react';
 import { Button, StatsCard, Card, Input } from '../components/ui';
 
-// Hash Rate 관련 인터페이스
+// Hash Rate 관련 인터페이스 - 수정됨
 interface HashRateData {
   base: number; // 기본 Hash Rate (12.0 TH/s)
   maximum: number; // 최대 Hash Rate (24.0 TH/s)
-  consecutiveDaysBonus: number; // 연속 로그인일 보너스 (1일당 +0.2, 최대 +2.0)
-  dailyCheckInBonus: number; // 일일 체크인 보너스 (+1.0)
-  teamBonus: number; // 팀 보너스 (1명당 +0.1, 최대 +10.0)
+  dailyCheckInBonus: number; // 일일 체크인 보너스 (+1.0 TH/s)
+  loginStreakBonus: number; // 로그인 연속일 보너스 (5일까지 +0.2씩)
+  referralPowerBonus: number; // 레퍼럴 파워 보너스 (1명당 +2%, 최대 100%)
+  luckyBoosterBonus: number; // 럭키 부스터 보너스 (+3%~+15%)
   current: number; // 현재 Hash Rate
 }
 
-// 효율성 관련 인터페이스
+// 효율성 관련 인터페이스 - 수정됨
 interface EfficiencyData {
   current: number;
-  target: number;
-  consecutiveDays: number;
+  baseGrade: EfficiencyGrade; // 등급에 따른 기본 보상
+  teamBonus: number; // 팀 구간별 보상
+  snsBonus: number; // SNS 연동 보상
   lastMaintenance: number; // 시간 (hours ago)
   dailyActivityCompleted: boolean;
   interruptionCount: number;
@@ -52,20 +65,36 @@ interface EfficiencyBoost {
   name: string;
   value: number;
   expiresAt?: Date;
-  source: 'maintenance' | 'daily_activity' | 'streak' | 'mission' | 'referral';
+  source: 'maintenance' | 'daily_activity' | 'grade' | 'team' | 'sns' | 'lucky';
 }
 
-// 레퍼럴 관련 인터페이스
-interface ReferralData {
-  hasEnteredCode: boolean;
-  referralCode: string;
-  referrerInfo?: {
-    name: string;
-    email: string;
-    joinDate: string;
-    totalEarnings: string;
-  };
-  bonusMultiplier: number;
+// 등급 시스템
+type EfficiencyGrade = 'Bronze' | 'Silver' | 'Gold' | 'Platinum' | 'Diamond';
+
+interface GradeInfo {
+  name: EfficiencyGrade;
+  minEfficiency: number;
+  baseReward: number; // 기본 보상 %
+  color: string;
+  bgColor: string;
+}
+
+// SNS 연동 상태
+interface SnsConnections {
+  facebook: boolean;
+  twitter: boolean;
+  instagram: boolean;
+  youtube: boolean;
+}
+
+// 럭키 부스터 정보
+interface LuckyBooster {
+  id: string;
+  name: string;
+  hashRateBoost: number; // %
+  duration: number; // hours
+  rarity: 'common' | 'rare' | 'epic' | 'legendary';
+  expiresAt?: Date;
 }
 
 // 수익 분석 데이터 인터페이스
@@ -85,70 +114,94 @@ const EarnPage: React.FC = () => {
   const [hashRate, setHashRate] = useState(12.0);
   const [miningStartTime, setMiningStartTime] = useState<number | null>(null);
   
-  // Hash Rate 관련 상태
+  // 등급 정보 - useMemo로 메모이제이션
+  const gradeInfo: GradeInfo[] = useMemo(() => [
+    { name: 'Bronze', minEfficiency: 0, baseReward: 0, color: 'text-orange-600', bgColor: 'bg-orange-100' },
+    { name: 'Silver', minEfficiency: 60, baseReward: 5, color: 'text-gray-600', bgColor: 'bg-gray-100' },
+    { name: 'Gold', minEfficiency: 75, baseReward: 10, color: 'text-yellow-600', bgColor: 'bg-yellow-100' },
+    { name: 'Platinum', minEfficiency: 85, baseReward: 15, color: 'text-blue-600', bgColor: 'bg-blue-100' },
+    { name: 'Diamond', minEfficiency: 95, baseReward: 25, color: 'text-purple-600', bgColor: 'bg-purple-100' }
+  ], []);
+
+  // Hash Rate 관련 상태 - 수정됨
   const [hashRateData, setHashRateData] = useState<HashRateData>({
     base: 12.0,
     maximum: 24.0,
-    consecutiveDaysBonus: 0,
     dailyCheckInBonus: 0,
-    teamBonus: 0,
+    loginStreakBonus: 0,
+    referralPowerBonus: 0,
+    luckyBoosterBonus: 0,
     current: 12.0
   });
 
-  // 팀 관련 상태 (임시 데이터)
+  // 팀 관련 상태
   const [teamData, setTeamData] = useState({
-    memberCount: 3, // 임시 데이터
+    memberCount: 25, // 임시 데이터 - 11~50명 구간
     maxMembers: 100
   });
-  
-  // 레퍼럴 관련 상태
-  const [referralInput, setReferralInput] = useState('');
-  const [referralData, setReferralData] = useState<ReferralData>({
-    hasEnteredCode: true, // view 확인을 위해 true로 설정
-    referralCode: 'MINER123456',
-    referrerInfo: {
-      name: 'John Doe',
-      email: 'john.doe@example.com',
-      joinDate: '2023-12-15',
-      totalEarnings: '2.45678'
-    },
-    bonusMultiplier: 1.15
-  });
-  const [isValidatingReferral, setIsValidatingReferral] = useState(false);
-  const [referralError, setReferralError] = useState('');
 
-  // 효율성 상태
+  // SNS 연동 상태
+  const [snsConnections, setSnsConnections] = useState<SnsConnections>({
+    facebook: true,
+    twitter: false,
+    instagram: true,
+    youtube: false
+  });
+
+  // 럭키 부스터 상태
+  const [activeLuckyBooster, setActiveLuckyBooster] = useState<LuckyBooster | null>({
+    id: 'lucky_001',
+    name: 'Golden Rush',
+    hashRateBoost: 12,
+    duration: 24,
+    rarity: 'rare',
+    expiresAt: new Date(Date.now() + 20 * 60 * 60 * 1000) // 20시간 후
+  });
+
+  // 가챠 관련 상태
+  const [isGachaOpen, setIsGachaOpen] = useState(false);
+  const [gachaResult, setGachaResult] = useState<LuckyBooster | null>(null);
+  const [isSpinning, setIsSpinning] = useState(false);
+
+  // 효율성 상태 - 수정됨
   const [efficiency, setEfficiency] = useState<EfficiencyData>({
     current: 78.5,
-    target: 85.0,
-    consecutiveDays: 5, // 임시로 5일로 설정
+    baseGrade: 'Gold',
+    teamBonus: 2, // 11~50명 구간
+    snsBonus: 3, // 2개 SNS 연동
     lastMaintenance: 2.5,
-    dailyActivityCompleted: false, // 테스트를 위해 false
+    dailyActivityCompleted: false,
     interruptionCount: 1,
     efficiencyBoosts: [
       {
         id: '1',
-        name: 'Daily Activity',
-        value: 5,
-        source: 'daily_activity'
+        name: 'Gold Grade',
+        value: 10,
+        source: 'grade'
       },
       {
         id: '2', 
-        name: '5-Day Streak',
-        value: 4.0,
-        source: 'streak'
+        name: 'Team Bonus (25 members)',
+        value: 2,
+        source: 'team'
       },
       {
         id: '3',
-        name: 'Referral Bonus',
-        value: 15,
-        source: 'referral'
+        name: 'SNS Connections (2)',
+        value: 3,
+        source: 'sns'
       }
     ]
   });
 
+  // 로그인 연속일 상태
+  const [loginStreak, setLoginStreak] = useState(3); // 임시 데이터
+
+  // 레퍼럴 파워 상태
+  const [referralCount, setReferralCount] = useState(8); // 임시 데이터
+
   // 수익 분석 데이터 (임시)
-  const [earningsAnalysis, setEarningsAnalysis] = useState<EarningsAnalysis>({
+  const [earningsAnalysis] = useState<EarningsAnalysis>({
     totalEarnings: 1.234567,
     lastDayProfit: 0.024567,
     thirtyDayProfit: 0.689432,
@@ -160,51 +213,227 @@ const EarnPage: React.FC = () => {
   // 24시간 = 86400초
   const TOTAL_MINING_TIME = 86400;
 
-  // Hash Rate 계산 함수
-  const calculateHashRate = () => {
+  // 팀 보너스 계산 함수 - useCallback으로 메모이제이션
+  const calculateTeamBonus = useCallback((memberCount: number): number => {
+    if (memberCount >= 101) return 10;
+    if (memberCount >= 51) return 5;
+    if (memberCount >= 11) return 2;
+    if (memberCount >= 1) return 0.5;
+    return 0;
+  }, []);
+
+  // SNS 보너스 계산 함수 - useCallback으로 메모이제이션
+  const calculateSnsBonus = useCallback((connections: SnsConnections): number => {
+    const connectedCount = Object.values(connections).filter(Boolean).length;
+    return connectedCount * 1.5; // 연동된 SNS 1개당 +1.5%
+  }, []);
+
+  // 등급 결정 함수 - useCallback으로 메모이제이션
+  const determineGrade = useCallback((efficiencyValue: number): EfficiencyGrade => {
+    for (let i = gradeInfo.length - 1; i >= 0; i--) {
+      if (efficiencyValue >= gradeInfo[i].minEfficiency) {
+        return gradeInfo[i].name;
+      }
+    }
+    return 'Bronze';
+  }, [gradeInfo]);
+
+  // Hash Rate 계산 함수 - useCallback으로 메모이제이션하고 상태 업데이트 분리
+  const calculateCurrentHashRate = useCallback(() => {
     let currentHashRate = hashRateData.base; // 12.0 TH/s
     
-    // 연속 로그인일 보너스 (1일당 +0.2 TH/s, 최대 +2.0 TH/s)
-    const consecutiveBonus = Math.min(efficiency.consecutiveDays * 0.2, 2.0);
-    
-    // 일일 체크인 보너스 (+1.0 TH/s)
+    // 1. Daily Check-in 보너스 (+1.0 TH/s)
     const checkInBonus = efficiency.dailyActivityCompleted ? 1.0 : 0;
     
-    // 팀 보너스 (1명당 +0.1 TH/s, 최대 +10.0 TH/s)
-    const teamBonus = Math.min(teamData.memberCount * 0.1, 10.0);
+    // 2. Login Streak 보너스 (5일까지 +0.2씩)
+    const streakBonus = Math.min(loginStreak * 0.2, 1.0); // 최대 1.0 TH/s
+    
+    // 3. Referral Power 보너스 (1명당 +2%, 최대 100%)
+    const referralBoostPercent = Math.min(referralCount * 2, 100); // 최대 100%
+    const referralBonus = (currentHashRate * referralBoostPercent) / 100;
+    
+    // 4. Lucky Booster 보너스
+    const luckyBonus = activeLuckyBooster 
+      ? (currentHashRate * activeLuckyBooster.hashRateBoost) / 100 
+      : 0;
     
     // 총 Hash Rate 계산 (최대 24.0 TH/s)
     const totalHashRate = Math.min(
-      currentHashRate + consecutiveBonus + checkInBonus + teamBonus,
+      currentHashRate + checkInBonus + streakBonus + referralBonus + luckyBonus,
       hashRateData.maximum
     );
     
-    // Hash Rate 데이터 업데이트
+    return {
+      dailyCheckInBonus: checkInBonus,
+      loginStreakBonus: streakBonus,
+      referralPowerBonus: referralBonus,
+      luckyBoosterBonus: luckyBonus,
+      current: totalHashRate
+    };
+  }, [
+    hashRateData.base,
+    hashRateData.maximum,
+    efficiency.dailyActivityCompleted,
+    loginStreak,
+    referralCount,
+    activeLuckyBooster
+  ]);
+
+  // Efficiency 계산 함수 - useCallback으로 메모이제이션하고 상태 업데이트 분리
+  const calculateCurrentEfficiency = useCallback(() => {
+    let baseEfficiency = 50; // 기본 효율성
+    
+    // 1. 등급에 따른 기본 보상
+    const currentGrade = determineGrade(efficiency.current);
+    const gradeBonus = gradeInfo.find(g => g.name === currentGrade)?.baseReward || 0;
+    
+    // 2. 팀 보너스
+    const teamBonus = calculateTeamBonus(teamData.memberCount);
+    
+    // 3. SNS 연동 보너스
+    const snsBonus = calculateSnsBonus(snsConnections);
+    
+    // 4. 기타 보너스들
+    if (efficiency.dailyActivityCompleted) baseEfficiency += 5;
+    if (efficiency.lastMaintenance <= 4) baseEfficiency += 3;
+    baseEfficiency -= efficiency.interruptionCount * 2;
+    
+    // 총 효율성 계산
+    const totalEfficiency = Math.max(30, Math.min(100, 
+      baseEfficiency + gradeBonus + teamBonus + snsBonus
+    ));
+    
+    return {
+      current: totalEfficiency,
+      baseGrade: currentGrade,
+      teamBonus,
+      snsBonus,
+      efficiencyBoosts: [
+        {
+          id: 'grade',
+          name: `${currentGrade} Grade`,
+          value: gradeBonus,
+          source: 'grade' as const
+        },
+        {
+          id: 'team',
+          name: `Team Bonus (${teamData.memberCount} members)`,
+          value: teamBonus,
+          source: 'team' as const
+        },
+        {
+          id: 'sns',
+          name: `SNS Connections (${Object.values(snsConnections).filter(Boolean).length})`,
+          value: snsBonus,
+          source: 'sns' as const
+        },
+        ...(activeLuckyBooster ? [{
+          id: 'lucky',
+          name: activeLuckyBooster.name,
+          value: activeLuckyBooster.hashRateBoost,
+          source: 'lucky' as const
+        }] : [])
+      ]
+    };
+  }, [
+    efficiency.current,
+    efficiency.dailyActivityCompleted,
+    efficiency.lastMaintenance,
+    efficiency.interruptionCount,
+    teamData.memberCount,
+    snsConnections,
+    activeLuckyBooster,
+    determineGrade,
+    gradeInfo,
+    calculateTeamBonus,
+    calculateSnsBonus
+  ]);
+
+  // Hash Rate와 Efficiency 업데이트 - 분리된 useEffect
+  useEffect(() => {
+    const newHashRateData = calculateCurrentHashRate();
     setHashRateData(prev => ({
       ...prev,
-      consecutiveDaysBonus: consecutiveBonus,
-      dailyCheckInBonus: checkInBonus,
-      teamBonus: teamBonus,
-      current: totalHashRate
+      ...newHashRateData
     }));
+    setHashRate(newHashRateData.current);
+  }, [calculateCurrentHashRate]);
+
+  useEffect(() => {
+    const newEfficiencyData = calculateCurrentEfficiency();
+    setEfficiency(prev => ({
+      ...prev,
+      ...newEfficiencyData
+    }));
+  }, [calculateCurrentEfficiency]);
+
+  // 럭키 가챠 함수
+  const performLuckyGacha = async () => {
+    setIsSpinning(true);
+    setIsGachaOpen(true);
     
-    return totalHashRate;
+    // 스피닝 애니메이션
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    
+    // 랜덤 보상 생성
+    const rarities = ['common', 'rare', 'epic', 'legendary'] as const;
+    const weights = [60, 30, 8, 2]; // 확률 가중치
+    
+    let random = Math.random() * 100;
+    let selectedRarity: typeof rarities[number] = 'common';
+    let cumulativeWeight = 0;
+    
+    for (let i = 0; i < rarities.length; i++) {
+      cumulativeWeight += weights[i];
+      if (random <= cumulativeWeight) {
+        selectedRarity = rarities[i];
+        break;
+      }
+    }
+    
+    // 등급별 보상 생성
+    const boostRange = {
+      common: [3, 5],
+      rare: [6, 9],
+      epic: [10, 12],
+      legendary: [13, 15]
+    };
+    
+    const [min, max] = boostRange[selectedRarity];
+    const boostValue = Math.floor(Math.random() * (max - min + 1)) + min;
+    
+    const newBooster: LuckyBooster = {
+      id: `lucky_${Date.now()}`,
+      name: `${selectedRarity.charAt(0).toUpperCase() + selectedRarity.slice(1)} Booster`,
+      hashRateBoost: boostValue,
+      duration: 24,
+      rarity: selectedRarity,
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000)
+    };
+    
+    setGachaResult(newBooster);
+    setIsSpinning(false);
   };
 
-  // Hash Rate 업데이트
-  useEffect(() => {
-    const newHashRate = calculateHashRate();
-    setHashRate(newHashRate);
-  }, [efficiency.consecutiveDays, efficiency.dailyActivityCompleted, teamData.memberCount]);
+  // 가챠 결과 적용
+  const applyGachaResult = () => {
+    if (gachaResult) {
+      setActiveLuckyBooster(gachaResult);
+      setGachaResult(null);
+      setIsGachaOpen(false);
+    }
+  };
+
+  // SNS 연동 토글
+  const toggleSnsConnection = (platform: keyof SnsConnections) => {
+    setSnsConnections(prev => ({
+      ...prev,
+      [platform]: !prev[platform]
+    }));
+  };
 
   // 페이지 로드시 저장된 상태 복원
   useEffect(() => {
-    // 레퍼럴 코드 상태 복원
-    const savedReferralData = localStorage.getItem('referralData');
-    if (savedReferralData) {
-      setReferralData(JSON.parse(savedReferralData));
-    }
-
     // 마이닝 상태 복원
     const savedMiningState = localStorage.getItem('miningState');
     if (savedMiningState) {
@@ -222,86 +451,12 @@ const EarnPage: React.FC = () => {
         } else {
           // 24시간 완료
           setMiningTime(TOTAL_MINING_TIME);
-          setEarnings(savedEarnings + 0.024); // 24시간 채굴 완료 보상
+          setEarnings(savedEarnings + 0.024);
           localStorage.removeItem('miningState');
         }
       }
     }
   }, []);
-
-  // 레퍼럴 코드 검증 (임시 구현)
-  const validateReferralCode = async (code: string): Promise<boolean> => {
-    setIsValidatingReferral(true);
-    setReferralError('');
-
-    try {
-      // 임시 검증 로직 (실제로는 API 호출)
-      await new Promise(resolve => setTimeout(resolve, 1500)); // 로딩 시뮬레이션
-
-      // 임시 검증 룰
-      if (code.length < 6) {
-        setReferralError('레퍼럴 코드는 최소 6자 이상이어야 합니다.');
-        return false;
-      }
-
-      if (!code.match(/^[A-Z0-9]+$/)) {
-        setReferralError('레퍼럴 코드는 영문 대문자와 숫자만 포함해야 합니다.');
-        return false;
-      }
-
-      // 임시 더미 데이터
-      const dummyReferrerData = {
-        name: 'John Doe',
-        email: 'john.doe@example.com',
-        joinDate: '2023-12-15',
-        totalEarnings: '2.45678'
-      };
-
-      // 성공시 레퍼럴 데이터 설정
-      const newReferralData: ReferralData = {
-        hasEnteredCode: true,
-        referralCode: code,
-        referrerInfo: dummyReferrerData,
-        bonusMultiplier: 1.15 // 15% 보너스
-      };
-
-      setReferralData(newReferralData);
-      localStorage.setItem('referralData', JSON.stringify(newReferralData));
-
-      // 레퍼럴 보너스 효율성 부스터 추가
-      setEfficiency(prev => ({
-        ...prev,
-        efficiencyBoosts: [
-          ...prev.efficiencyBoosts.filter(boost => boost.source !== 'referral'),
-          {
-            id: `referral_${Date.now()}`,
-            name: 'Referral Bonus',
-            value: 15,
-            source: 'referral'
-          }
-        ]
-      }));
-
-      return true;
-    } catch (error) {
-      setReferralError('레퍼럴 코드 검증 중 오류가 발생했습니다.');
-      return false;
-    } finally {
-      setIsValidatingReferral(false);
-    }
-  };
-
-  const handleReferralSubmit = async () => {
-    if (!referralInput.trim()) {
-      setReferralError('레퍼럴 코드는 필수입니다.');
-      return;
-    }
-
-    const isValid = await validateReferralCode(referralInput.toUpperCase());
-    if (isValid) {
-      setReferralInput('');
-    }
-  };
 
   // 채굴 상태 저장
   useEffect(() => {
@@ -315,6 +470,7 @@ const EarnPage: React.FC = () => {
     }
   }, [isMining, miningStartTime, earnings]);
 
+  // 마이닝 타이머 - 의존성 단순화
   useEffect(() => {
     let interval: NodeJS.Timeout;
     
@@ -322,23 +478,20 @@ const EarnPage: React.FC = () => {
       interval = setInterval(() => {
         setMiningTime(prev => {
           const newTime = prev + 1;
-          // 효율성과 레퍼럴 보너스를 반영한 채굴 수익 계산
-          const efficiencyMultiplier = efficiency.current / 70; // 70%를 기준으로
-          const referralMultiplier = referralData.bonusMultiplier;
-          const hashRateMultiplier = hashRateData.current / hashRateData.base;
-          setEarnings(prev => prev + (0.001 / 3600) * efficiencyMultiplier * referralMultiplier * hashRateMultiplier);
           
-          // 해시레이트 변동 시뮬레이션 (기본값 기준으로 작은 변동)
+          // 효율성과 Hash Rate를 반영한 채굴 수익 계산
+          const efficiencyMultiplier = efficiency.current / 70;
+          const hashRateMultiplier = hashRateData.current / hashRateData.base;
+          setEarnings(prev => prev + (0.001 / 3600) * efficiencyMultiplier * hashRateMultiplier);
+          
+          // 해시레이트 변동 시뮬레이션
           const baseHashRate = hashRateData.current;
-          setHashRate(prev => baseHashRate + (Math.random() - 0.5) * 0.2);
+          setHashRate(baseHashRate + (Math.random() - 0.5) * 0.2);
           
           if (newTime >= TOTAL_MINING_TIME) {
             setIsMining(false);
             // 마이닝 완료시 연속일 증가
-            setEfficiency(prev => ({
-              ...prev,
-              consecutiveDays: prev.consecutiveDays + 1
-            }));
+            setLoginStreak(prev => prev + 1);
           }
           
           return newTime;
@@ -347,7 +500,7 @@ const EarnPage: React.FC = () => {
     }
     
     return () => clearInterval(interval);
-  }, [isMining, miningTime, efficiency.current, referralData.bonusMultiplier, hashRateData.current, hashRateData.base]);
+  }, [isMining, miningTime, efficiency.current, hashRateData.current, hashRateData.base]);
 
   const handleMiningToggle = () => {
     if (miningTime >= TOTAL_MINING_TIME) {
@@ -365,7 +518,7 @@ const EarnPage: React.FC = () => {
       setMiningStartTime(startTime);
       setIsMining(true);
     } else {
-      // 채굴 정지 (중단 횟수 증가)
+      // 채굴 정지
       setIsMining(false);
       setMiningStartTime(null);
       localStorage.removeItem('miningState');
@@ -388,7 +541,7 @@ const EarnPage: React.FC = () => {
           name: 'Fresh Maintenance',
           value: 3,
           source: 'maintenance',
-          expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000) // 4시간 후
+          expiresAt: new Date(Date.now() + 4 * 60 * 60 * 1000)
         }
       ]
     }));
@@ -398,43 +551,14 @@ const EarnPage: React.FC = () => {
   const handleDailyActivity = () => {
     setEfficiency(prev => ({
       ...prev,
-      dailyActivityCompleted: true,
-      efficiencyBoosts: [
-        ...prev.efficiencyBoosts.filter(boost => boost.source !== 'daily_activity'),
-        {
-          id: `daily_${Date.now()}`,
-          name: 'Daily Activity',
-          value: 5,
-          source: 'daily_activity'
-        }
-      ]
+      dailyActivityCompleted: true
     }));
   };
 
-  // 효율성 계산
-  const calculateCurrentEfficiency = () => {
-    let baseEfficiency = 70;
-    
-    // 연속일 보너스
-    baseEfficiency += Math.min(efficiency.consecutiveDays * 0.8, 15);
-    
-    // 일일 활동 보너스
-    if (efficiency.dailyActivityCompleted) baseEfficiency += 5;
-    
-    // 유지보수 상태
-    if (efficiency.lastMaintenance <= 4) baseEfficiency += 3;
-    
-    // 중단 패널티
-    baseEfficiency -= efficiency.interruptionCount * 2;
-    
-    // 부스터 적용
-    const boostValue = efficiency.efficiencyBoosts.reduce((sum, boost) => sum + boost.value, 0);
-    baseEfficiency += boostValue;
-    
-    return Math.max(50, Math.min(100, baseEfficiency));
-  };
-
-  const currentEfficiency = calculateCurrentEfficiency();
+  // 현재 효율성 계산 - useMemo로 메모이제이션
+  const currentEfficiency = useMemo(() => {
+    return efficiency.current;
+  }, [efficiency.current]);
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
@@ -460,14 +584,20 @@ const EarnPage: React.FC = () => {
   };
 
   const getEfficiencyGrade = (eff: number) => {
-    if (eff >= 95) return 'Diamond';
-    if (eff >= 90) return 'Platinum';
-    if (eff >= 80) return 'Gold';
-    if (eff >= 70) return 'Silver';
-    return 'Bronze';
+    return determineGrade(eff);
   };
 
-  const statsData = [
+  const getRarityColor = (rarity: string) => {
+    switch (rarity) {
+      case 'common': return 'text-gray-600 bg-gray-100';
+      case 'rare': return 'text-blue-600 bg-blue-100';
+      case 'epic': return 'text-purple-600 bg-purple-100';
+      case 'legendary': return 'text-yellow-600 bg-yellow-100';
+      default: return 'text-gray-600 bg-gray-100';
+    }
+  };
+
+  const statsData = useMemo(() => [
     {
       title: 'Current Earnings',
       value: `₿${earnings.toFixed(6)}`,
@@ -479,7 +609,7 @@ const EarnPage: React.FC = () => {
     {
       title: 'Hash Rate',
       value: `${hashRateData.current.toFixed(1)} TH/s`,
-      change: `${((hashRateData.current / hashRateData.base) * 100).toFixed(0)}% of max capacity`,
+      change: `${((hashRateData.current / hashRateData.base) * 100).toFixed(0)}% of base capacity`,
       changeType: 'positive' as const,
       icon: <Zap className="w-6 h-6" />,
       iconColor: 'bg-orange-100 text-orange-600'
@@ -496,19 +626,19 @@ const EarnPage: React.FC = () => {
       title: 'Efficiency',
       value: `${currentEfficiency.toFixed(1)}%`,
       change: `${getEfficiencyGrade(currentEfficiency)} Grade`,
-      changeType: currentEfficiency >= efficiency.target ? 'positive' as const : 'neutral' as const,
+      changeType: currentEfficiency >= 85 ? 'positive' as const : 'neutral' as const,
       icon: <Activity className="w-6 h-6" />,
       iconColor: 'bg-purple-100 text-purple-600'
     }
-  ];
+  ], [earnings, hashRateData.current, hashRateData.base, miningTime, currentEfficiency, isMining, getEfficiencyGrade]);
 
-  const miningHistory = [
+  const miningHistory = useMemo(() => [
     { date: '2024-01-05', duration: '24:00:00', earnings: 0.024, efficiency: 87.3, status: 'completed' },
     { date: '2024-01-04', duration: '24:00:00', earnings: 0.023, efficiency: 85.1, status: 'completed' },
     { date: '2024-01-03', duration: '18:30:00', earnings: 0.018, efficiency: 72.8, status: 'interrupted' },
     { date: '2024-01-02', duration: '24:00:00', earnings: 0.025, efficiency: 89.2, status: 'completed' },
     { date: '2024-01-01', duration: '24:00:00', earnings: 0.022, efficiency: 83.5, status: 'completed' },
-  ];
+  ], []);
 
   return (
     <div className="h-full overflow-auto">
@@ -522,32 +652,36 @@ const EarnPage: React.FC = () => {
           </p>
         </div>
 
-        {/* Referral Status Card */}
-        {referralData.referralCode && (
-          <Card className="mb-6 bg-gradient-to-r from-purple-50 to-blue-50 border-purple-200">
+        {/* Active Lucky Booster Card */}
+        {activeLuckyBooster && (
+          <Card className={`mb-6 bg-gradient-to-r from-yellow-50 to-orange-50 border-yellow-200`}>
             <div className="flex items-center justify-between">
               <div className="flex items-center space-x-4">
-                <div className="w-12 h-12 bg-purple-100 rounded-lg flex items-center justify-center">
-                  <Gift className="w-6 h-6 text-purple-600" />
+                <div className="w-12 h-12 bg-yellow-100 rounded-xl flex items-center justify-center">
+                  <Sparkles className="w-6 h-6 text-yellow-600" />
                 </div>
                 <div>
-                  <h3 className="font-semibold text-purple-900">Referral Bonus Active</h3>
-                  <p className="text-sm text-purple-700">
-                    +{((referralData.bonusMultiplier - 1) * 100).toFixed(0)}% mining bonus from code: 
-                    <span className="font-mono font-bold ml-1">{referralData.referralCode}</span>
+                  <h3 className="font-bold text-yellow-900 flex items-center">
+                    {activeLuckyBooster.name}
+                    <span className={`ml-2 text-xs px-2 py-1 rounded-full ${getRarityColor(activeLuckyBooster.rarity)}`}>
+                      {activeLuckyBooster.rarity.toUpperCase()}
+                    </span>
+                  </h3>
+                  <p className="text-sm text-yellow-700">
+                    +{activeLuckyBooster.hashRateBoost}% Hash Rate Boost Active
                   </p>
-                  {referralData.referrerInfo && (
-                    <p className="text-xs text-purple-600 mt-1">
-                      Referred by: {referralData.referrerInfo.name}
+                  {activeLuckyBooster.expiresAt && (
+                    <p className="text-xs text-yellow-600 mt-1">
+                      Expires in: {Math.ceil((activeLuckyBooster.expiresAt.getTime() - Date.now()) / (1000 * 60 * 60))}h
                     </p>
                   )}
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-lg font-bold text-purple-900">
-                  +{((referralData.bonusMultiplier - 1) * 100).toFixed(0)}%
+                <div className="text-lg font-bold text-yellow-900">
+                  +{activeLuckyBooster.hashRateBoost}%
                 </div>
-                <div className="text-xs text-purple-600">Bonus Rate</div>
+                <div className="text-xs text-yellow-600">Hash Rate</div>
               </div>
             </div>
           </Card>
@@ -577,7 +711,6 @@ const EarnPage: React.FC = () => {
               {/* Progress Circle */}
               <div className="relative w-48 h-48 mx-auto mb-6">
                 <svg className="w-48 h-48 transform -rotate-90" viewBox="0 0 100 100">
-                  {/* Background circle */}
                   <circle
                     cx="50"
                     cy="50"
@@ -587,7 +720,6 @@ const EarnPage: React.FC = () => {
                     fill="none"
                     className="text-gray-200"
                   />
-                  {/* Progress circle */}
                   <circle
                     cx="50"
                     cy="50"
@@ -653,9 +785,9 @@ const EarnPage: React.FC = () => {
           ))}
         </div>
 
-        {/* Combined Management Section - Simplified */}
+        {/* Combined Management Section */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-8">
-          {/* Hash Rate Section */}
+          {/* Hash Rate Boost Section - 완전히 새로운 보너스 시스템 */}
           <Card>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900 flex items-center">
@@ -667,7 +799,7 @@ const EarnPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Compact Progress Bar */}
+            {/* Progress Bar */}
             <div className="mb-4">
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div 
@@ -677,19 +809,12 @@ const EarnPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Boosts Summary */}
-            <div className="space-y-2 text-sm">
+            {/* 새로운 보너스 시스템 */}
+            <div className="space-y-3 text-sm">
+              {/* 1. Daily Check-in */}
               <div className="flex justify-between items-center">
                 <span className="text-gray-600 flex items-center">
-                  <Flame className="w-3 h-3 mr-1.5" />
-                  Streak Bonus ({efficiency.consecutiveDays}d)
-                </span>
-                <span className="font-medium text-blue-600">+{hashRateData.consecutiveDaysBonus.toFixed(1)} TH/s</span>
-              </div>
-              
-              <div className="flex justify-between items-center">
-                <span className="text-gray-600 flex items-center">
-                  <CheckCircle className={`w-3 h-3 mr-1.5 ${efficiency.dailyActivityCompleted ? 'text-green-500' : ''}`} />
+                  <CheckCircle className={`w-3 h-3 mr-1.5 ${efficiency.dailyActivityCompleted ? 'text-green-500' : 'text-gray-400'}`} />
                   Daily Check-in
                 </span>
                 <span className={`font-medium ${efficiency.dailyActivityCompleted ? 'text-green-600' : 'text-gray-400'}`}>
@@ -697,27 +822,64 @@ const EarnPage: React.FC = () => {
                 </span>
               </div>
               
+              {/* 2. Login Streak */}
               <div className="flex justify-between items-center">
                 <span className="text-gray-600 flex items-center">
-                  <Users className="w-3 h-3 mr-1.5" />
-                  Team ({teamData.memberCount})
+                  <Flame className="w-3 h-3 mr-1.5 text-orange-500" />
+                  Login Streak ({loginStreak}d)
                 </span>
-                <span className="font-medium text-purple-600">+{hashRateData.teamBonus.toFixed(1)} TH/s</span>
+                <span className="font-medium text-orange-600">
+                  +{hashRateData.loginStreakBonus.toFixed(1)} TH/s
+                </span>
+              </div>
+              
+              {/* 3. Referral Power */}
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600 flex items-center">
+                  <UserPlus className="w-3 h-3 mr-1.5 text-purple-500" />
+                  Referral Power ({referralCount})
+                </span>
+                <span className="font-medium text-purple-600">
+                  +{((referralCount * 2)).toFixed(0)}% ({hashRateData.referralPowerBonus.toFixed(2)} TH/s)
+                </span>
+              </div>
+              
+              {/* 4. Lucky Booster */}
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600 flex items-center">
+                  <Sparkles className="w-3 h-3 mr-1.5 text-yellow-500" />
+                  Lucky Booster
+                </span>
+                <span className={`font-medium ${activeLuckyBooster ? 'text-yellow-600' : 'text-gray-400'}`}>
+                  +{activeLuckyBooster ? activeLuckyBooster.hashRateBoost : 0}% ({hashRateData.luckyBoosterBonus.toFixed(2)} TH/s)
+                </span>
               </div>
             </div>
 
             {/* Quick Actions */}
-            {!efficiency.dailyActivityCompleted && (
+            <div className="mt-4 space-y-2">
+              {!efficiency.dailyActivityCompleted && (
+                <Button
+                  onClick={handleDailyActivity}
+                  variant="primary"
+                  size="sm"
+                  className="w-full"
+                  icon={CheckCircle}
+                >
+                  Complete Daily Check-in (+1.0 TH/s)
+                </Button>
+              )}
+              
               <Button
-                onClick={handleDailyActivity}
-                variant="primary"
+                onClick={() => setIsGachaOpen(true)}
+                variant="outline"
                 size="sm"
-                className="w-full mt-4"
-                icon={CheckCircle}
+                className="w-full border-yellow-300 text-yellow-700 hover:bg-yellow-50"
+                icon={Dice6}
               >
-                Complete Daily Check-in (+1.0 TH/s)
+                Lucky Gacha (Get Random Booster)
               </Button>
-            )}
+            </div>
             
             {hashRateData.current >= hashRateData.maximum && (
               <div className="mt-4 p-2 bg-yellow-50 border border-yellow-200 rounded-lg">
@@ -729,7 +891,7 @@ const EarnPage: React.FC = () => {
             )}
           </Card>
 
-          {/* Efficiency Section */}
+          {/* Efficiency Status Section - 완전히 새로운 보너스 시스템 */}
           <Card>
             <div className="flex items-center justify-between mb-4">
               <h3 className="text-lg font-semibold text-gray-900 flex items-center">
@@ -741,7 +903,7 @@ const EarnPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Compact Progress Bar */}
+            {/* Progress Bar */}
             <div className="mb-4">
               <div className="w-full bg-gray-200 rounded-full h-2">
                 <div 
@@ -760,36 +922,78 @@ const EarnPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Efficiency Factors */}
-            <div className="space-y-2 text-sm">
+            {/* 새로운 효율성 보너스 시스템 */}
+            <div className="space-y-3 text-sm">
+              {/* 1. 등급에 따른 기본 보상 */}
               <div className="flex justify-between items-center">
                 <span className="text-gray-600 flex items-center">
-                  <Wrench className={`w-3 h-3 mr-1.5 ${efficiency.lastMaintenance >= 4 ? 'text-orange-500' : ''}`} />
+                  <Crown className={`w-3 h-3 mr-1.5 ${efficiency.baseGrade === 'Diamond' ? 'text-purple-500' : 
+                    efficiency.baseGrade === 'Platinum' ? 'text-blue-500' :
+                    efficiency.baseGrade === 'Gold' ? 'text-yellow-500' :
+                    efficiency.baseGrade === 'Silver' ? 'text-gray-500' : 'text-orange-500'}`} />
+                  {efficiency.baseGrade} Grade
+                </span>
+                <span className="font-medium text-blue-600">
+                  +{gradeInfo.find(g => g.name === efficiency.baseGrade)?.baseReward || 0}%
+                </span>
+              </div>
+              
+              {/* 2. Team 보너스 */}
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600 flex items-center">
+                  <Users className="w-3 h-3 mr-1.5 text-green-500" />
+                  Team ({teamData.memberCount})
+                </span>
+                <span className="font-medium text-green-600">
+                  +{efficiency.teamBonus.toFixed(1)}%
+                </span>
+              </div>
+              
+              {/* 3. SNS 연동 보너스 */}
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600 flex items-center">
+                  <ExternalLink className="w-3 h-3 mr-1.5 text-purple-500" />
+                  SNS Connected ({Object.values(snsConnections).filter(Boolean).length})
+                </span>
+                <span className="font-medium text-purple-600">
+                  +{efficiency.snsBonus.toFixed(1)}%
+                </span>
+              </div>
+              
+              {/* 4. 유지보수 상태 */}
+              <div className="flex justify-between items-center">
+                <span className="text-gray-600 flex items-center">
+                  <Wrench className={`w-3 h-3 mr-1.5 ${efficiency.lastMaintenance >= 4 ? 'text-orange-500' : 'text-green-500'}`} />
                   Maintenance
                 </span>
                 <span className={`font-medium ${efficiency.lastMaintenance >= 4 ? 'text-orange-600' : 'text-green-600'}`}>
-                  {efficiency.lastMaintenance >= 4 ? `${efficiency.lastMaintenance.toFixed(1)}h ago` : 'Good'}
+                  {efficiency.lastMaintenance >= 4 ? `${efficiency.lastMaintenance.toFixed(1)}h ago` : 'Good (+3%)'}
                 </span>
               </div>
-              
-              <div className="flex justify-between items-center">
-                <span className="text-gray-600 flex items-center">
-                  <Flame className="w-3 h-3 mr-1.5" />
-                  Login Streak
-                </span>
-                <span className="font-medium text-blue-600">
-                  {efficiency.consecutiveDays} days (+{Math.min(efficiency.consecutiveDays * 0.8, 15).toFixed(1)}%)
-                </span>
-              </div>
-              
-              <div className="flex justify-between items-center">
-                <span className="text-gray-600 flex items-center">
-                  <Target className="w-3 h-3 mr-1.5" />
-                  Active Boosts
-                </span>
-                <span className="font-medium text-green-600">
-                  +{efficiency.efficiencyBoosts.reduce((sum, boost) => sum + boost.value, 0).toFixed(1)}%
-                </span>
+            </div>
+
+            {/* SNS 연동 섹션 */}
+            <div className="mt-4 p-3 bg-gray-50 rounded-lg">
+              <p className="text-xs font-medium text-gray-700 mb-2">SNS Connections (+1.5% each)</p>
+              <div className="grid grid-cols-4 gap-2">
+                {[
+                  { key: 'facebook' as keyof SnsConnections, icon: Facebook, color: 'text-blue-600' },
+                  { key: 'twitter' as keyof SnsConnections, icon: Twitter, color: 'text-blue-400' },
+                  { key: 'instagram' as keyof SnsConnections, icon: Instagram, color: 'text-pink-600' },
+                  { key: 'youtube' as keyof SnsConnections, icon: Youtube, color: 'text-red-600' }
+                ].map(({ key, icon: Icon, color }) => (
+                  <button
+                    key={key}
+                    onClick={() => toggleSnsConnection(key)}
+                    className={`p-2 rounded-lg border-2 transition-all ${
+                      snsConnections[key] 
+                        ? `border-green-300 bg-green-50 ${color}` 
+                        : 'border-gray-200 bg-white text-gray-400 hover:border-gray-300'
+                    }`}
+                  >
+                    <Icon className="w-4 h-4 mx-auto" />
+                  </button>
+                ))}
               </div>
             </div>
 
@@ -804,24 +1008,6 @@ const EarnPage: React.FC = () => {
               >
                 Perform Maintenance (+3% efficiency)
               </Button>
-            )}
-            
-            {/* Active Boosts Indicator */}
-            {efficiency.efficiencyBoosts.length > 0 && (
-              <div className="mt-4 flex flex-wrap gap-1">
-                {efficiency.efficiencyBoosts.map((boost) => (
-                  <span
-                    key={boost.id}
-                    className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                      boost.source === 'referral' 
-                        ? 'bg-purple-100 text-purple-700' 
-                        : 'bg-green-100 text-green-700'
-                    }`}
-                  >
-                    +{boost.value}%
-                  </span>
-                ))}
-              </div>
             )}
           </Card>
         </div>
@@ -856,7 +1042,7 @@ const EarnPage: React.FC = () => {
             </div>
           </Card>
 
-          {/* Earn Analysis - New Improved Section */}
+          {/* Earn Analysis */}
           <Card>
             <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
               <BarChart3 className="w-5 h-5 mr-2" />
@@ -884,14 +1070,13 @@ const EarnPage: React.FC = () => {
               </div>
             </div>
 
-            {/* Daily Rewards Chart Section */}
+            {/* Chart Placeholder */}
             <div className="mb-6">
               <h4 className="text-md font-medium text-gray-900 mb-4 flex items-center">
                 <LineChart className="w-4 h-4 mr-2" />
                 Daily Rewards
               </h4>
               
-              {/* Chart Placeholder - Same as Dashboard */}
               <div className="h-48 bg-gray-50 rounded-lg flex items-center justify-center border-2 border-dashed border-gray-200">
                 <div className="text-center">
                   <TrendingUp className="w-8 h-8 text-gray-400 mx-auto mb-2" />
@@ -935,7 +1120,7 @@ const EarnPage: React.FC = () => {
                 <div>
                   <p className="text-xs text-orange-700 font-medium">Performance Tip</p>
                   <p className="text-xs text-orange-600 mt-1">
-                    Maintain {currentEfficiency >= 85 ? 'your excellent' : 'high'} efficiency 
+                    Connect more SNS accounts and maintain {currentEfficiency >= 85 ? 'your excellent' : 'high'} efficiency 
                     {currentEfficiency < 85 && ' (target: 85%+)'} for maximum daily rewards.
                   </p>
                 </div>
@@ -944,6 +1129,84 @@ const EarnPage: React.FC = () => {
           </Card>
         </div>
       </div>
+
+      {/* Lucky Gacha Modal */}
+      {isGachaOpen && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
+          <div className="bg-white rounded-xl max-w-md w-full p-6">
+            <div className="text-center">
+              <h3 className="text-xl font-bold text-gray-900 mb-4">Lucky Gacha</h3>
+              
+              {!gachaResult ? (
+                <>
+                  <div className="w-32 h-32 mx-auto mb-6 bg-gradient-to-br from-yellow-400 to-orange-500 rounded-full flex items-center justify-center">
+                    <Dice6 className={`w-16 h-16 text-white ${isSpinning ? 'animate-spin' : ''}`} />
+                  </div>
+                  
+                  {!isSpinning ? (
+                    <Button
+                      onClick={performLuckyGacha}
+                      variant="primary"
+                      size="lg"
+                      className="w-full"
+                      icon={Sparkles}
+                    >
+                      Spin for Lucky Booster!
+                    </Button>
+                  ) : (
+                    <div className="text-center">
+                      <div className="text-lg font-semibold text-gray-700 mb-2">Spinning...</div>
+                      <div className="w-8 h-8 border-4 border-yellow-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <>
+                  <div className="text-center mb-6">
+                    <div className={`inline-flex items-center justify-center w-24 h-24 rounded-full mb-4 ${getRarityColor(gachaResult.rarity)}`}>
+                      <Sparkles className="w-12 h-12" />
+                    </div>
+                    <h4 className="text-lg font-bold text-gray-900 mb-2">{gachaResult.name}</h4>
+                    <p className="text-sm text-gray-600 mb-2">+{gachaResult.hashRateBoost}% Hash Rate Boost</p>
+                    <span className={`inline-block px-3 py-1 rounded-full text-xs font-medium ${getRarityColor(gachaResult.rarity)}`}>
+                      {gachaResult.rarity.toUpperCase()}
+                    </span>
+                  </div>
+                  
+                  <div className="grid grid-cols-2 gap-3">
+                    <Button
+                      onClick={() => {
+                        setGachaResult(null);
+                        setIsGachaOpen(false);
+                      }}
+                      variant="outline"
+                    >
+                      Discard
+                    </Button>
+                    <Button
+                      onClick={applyGachaResult}
+                      variant="primary"
+                    >
+                      Apply Boost
+                    </Button>
+                  </div>
+                </>
+              )}
+              
+              <button
+                onClick={() => {
+                  setIsGachaOpen(false);
+                  setGachaResult(null);
+                  setIsSpinning(false);
+                }}
+                className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -79,7 +79,6 @@ interface TopUpInfo {
 
 const CardPage: React.FC = () => {
   const { user, balance } = useWeb3Auth();
-  const [activeTab, setActiveTab] = useState<'overview' | 'transactions' | 'settings'>('overview');
   const [selectedCard, setSelectedCard] = useState<string>('card-001');
   const [showCardDetails, setShowCardDetails] = useState(false);
   const [showTopUpModal, setShowTopUpModal] = useState(false);
@@ -443,18 +442,10 @@ const CardPage: React.FC = () => {
           {currentCard ? (
             <div className="max-w-sm mx-auto">
               {/* Card Visual */}
-              <div className={`relative w-full h-48 rounded-xl shadow-lg ${getCardDesign(currentCard.cardDesign)} p-6 text-white overflow-hidden cursor-pointer hover:shadow-xl transition-shadow duration-300`}
-                   onClick={() => cryptoCards.length > 1 && setShowCardSelector(true)}>
+              <div className={`relative w-full h-48 rounded-xl shadow-lg ${getCardDesign(currentCard.cardDesign)} p-6 text-white overflow-hidden transition-shadow duration-300`}>
                 {/* Card Background Pattern */}
                 <div className="absolute top-0 right-0 w-32 h-32 bg-white bg-opacity-10 rounded-full -mr-16 -mt-16"></div>
                 <div className="absolute bottom-0 left-0 w-24 h-24 bg-white bg-opacity-5 rounded-full -ml-12 -mb-12"></div>
-                
-                {/* Multiple Cards Indicator */}
-                {cryptoCards.length > 1 && (
-                  <div className="absolute top-3 right-3 bg-white bg-opacity-20 backdrop-blur-sm rounded-full px-2 py-1">
-                    <span className="text-xs font-medium">{cryptoCards.length} cards</span>
-                  </div>
-                )}
                 
                 {/* Card Header */}
                 <div className="flex justify-between items-start mb-8">
@@ -484,21 +475,45 @@ const CardPage: React.FC = () => {
                 
                 {/* Card Number */}
                 <div className="mb-4">
-                  <p className="text-lg font-mono tracking-wider">
-                    {showCardDetails ? currentCard.cardNumber : currentCard.cardNumber.replace(/\d(?=\d{4})/g, '•')}
-                  </p>
+                  <div className="flex items-center space-x-2">
+                    <p className="text-lg font-mono tracking-wider">
+                      {showCardDetails ? currentCard.cardNumber : currentCard.cardNumber.replace(/\d(?=\d{4})/g, '•')}
+                    </p>
+                    <button
+                      onClick={() => handleCopyField('cardNumber', currentCard.cardNumber)}
+                      className="text-white hover:text-yellow-200 transition-colors"
+                      title="Copy Card Number"
+                    >
+                      {copiedField === 'cardNumber' ? (
+                        <CheckCircle className="w-4 h-4" />
+                      ) : (
+                        <Copy className="w-4 h-4" />
+                      )}
+                    </button>
+                  </div>
                 </div>
                 
                 {/* Card Footer */}
                 <div className="flex justify-between items-end">
                   <div>
                     <p className="text-xs opacity-75">CARDHOLDER</p>
-                    <p className="text-sm font-medium">{currentCard.holderName}</p>
+                    <p className="text-sm font-medium">
+                      {showCardDetails ? currentCard.holderName : '••••'}
+                    </p>
                   </div>
-                  <div className="text-right">
+                  <div className="text-center">
                     <p className="text-xs opacity-75">EXPIRES</p>
-                    <p className="text-sm font-medium">{currentCard.expiryDate}</p>
+                    <p className="text-sm font-medium">
+                      {showCardDetails ? currentCard.expiryDate : '••/••'}
+                    </p>
                   </div>
+                  <div className="text-center">
+                    <p className="text-xs opacity-75">CVV</p>
+                    <p className="text-sm font-medium">
+                      {showCardDetails ? currentCard.cvv : '•••'}
+                    </p>
+                  </div>
+                  
                   <div className="flex items-center">
                     <span className="text-xl font-bold tracking-wider">{currentCard.cardNetwork}</span>
                   </div>
@@ -540,319 +555,112 @@ const CardPage: React.FC = () => {
           )}
         </div>
 
-        {/* Card Details Toggle - 이제 카드 아래로 이동됨 */}
-        <div className="mb-6 hidden">
-          <Button
-            onClick={() => setShowCardDetails(!showCardDetails)}
-            variant="outline"
-            icon={showCardDetails ? EyeOff : Eye}
-            size="sm"
-          >
-            {showCardDetails ? 'Hide' : 'Show'} Card Details
-          </Button>
-        </div>
-
-        {/* Tab Navigation */}
-        <div className="mb-6">
-          <div className="border-b border-gray-200">
-            <nav className="-mb-px flex space-x-8 overflow-x-auto">
-              {[
-                { id: 'overview', label: 'Overview', icon: CreditCard },
-                { id: 'transactions', label: 'Transactions', icon: Clock },
-                { id: 'settings', label: 'Settings', icon: Settings }
-              ].map((tab) => (
-                <button
-                  key={tab.id}
-                  onClick={() => setActiveTab(tab.id as any)}
-                  className={`flex items-center space-x-2 py-4 px-1 border-b-2 font-medium text-sm whitespace-nowrap ${
-                    activeTab === tab.id
-                      ? 'border-blue-500 text-blue-600'
-                      : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                  }`}
-                >
-                  <tab.icon className="w-4 h-4" />
-                  <span>{tab.label}</span>
-                </button>
-              ))}
-            </nav>
-          </div>
-        </div>
-
-        {/* Tab Content */}
-        {activeTab === 'overview' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Card Information */}
-            <Card>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Card Information</h3>
-              
-              {currentCard ? (
-                showCardDetails ? (
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                      <span className="text-gray-600">Card Number</span>
-                      <div className="flex items-center space-x-2">
-                        <span className="font-mono">{currentCard.cardNumber}</span>
-                        <button
-                          onClick={() => handleCopyField('cardNumber', currentCard.cardNumber)}
-                          className="text-blue-600 hover:text-blue-800"
-                        >
-                          {copiedField === 'cardNumber' ? (
-                            <CheckCircle className="w-4 h-4" />
-                          ) : (
-                            <Copy className="w-4 h-4" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                    
-                    <div className="grid grid-cols-2 gap-4">
-                      <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                        <span className="text-gray-600">Expiry</span>
-                        <span className="font-mono">{currentCard.expiryDate}</span>
-                      </div>
-                      <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                        <span className="text-gray-600">CVV</span>
-                        <div className="flex items-center space-x-2">
-                          <span className="font-mono">{currentCard.cvv}</span>
-                          <button
-                            onClick={() => handleCopyField('cvv', currentCard.cvv)}
-                            className="text-blue-600 hover:text-blue-800"
-                          >
-                            {copiedField === 'cvv' ? (
-                              <CheckCircle className="w-4 h-4" />
-                            ) : (
-                              <Copy className="w-4 h-4" />
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <Lock className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                    <p className="text-gray-500">Card details are hidden for security</p>
-                    <Button
-                      onClick={() => setShowCardDetails(true)}
-                      variant="outline"
-                      size="sm"
-                      className="mt-3"
-                      icon={Eye}
-                    >
-                      Show Details
-                    </Button>
-                  </div>
-                )
-              ) : (
-                <div className="text-center py-8">
-                  <CreditCard className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                  <p className="text-gray-500">No card selected</p>
-                </div>
-              )}
-            </Card>
-
-            {/* Card Usage */}
-            <Card>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Usage Overview</h3>
-              
+        {/* Main Content Grid - Usage Overview and Transactions side by side */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Usage Overview */}
+          <Card>
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Usage Overview</h3>
+            
+            <div className="space-y-4">
               <div className="space-y-4">
-                <div className="space-y-4">
-                  <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
-                    <span className="text-gray-600">Monthly Spending</span>
-                    <span className="font-medium">{currentCard.monthlySpent.toFixed(2)} / {currentCard.monthlyLimit.toFixed(2)} USDT</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2">
-                    <div 
-                      className="bg-blue-600 h-2 rounded-full transition-all duration-300"
-                      style={{ width: `${(currentCard.monthlySpent / currentCard.monthlyLimit) * 100}%` }}
-                    />
-                  </div>
-                  <p className="text-xs text-gray-500 mt-1">
-                    {((currentCard.monthlySpent / currentCard.monthlyLimit) * 100).toFixed(1)}% of monthly limit
+                <div className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                  <span className="text-gray-600">Monthly Spending</span>
+                  <span className="font-medium">{currentCard.monthlySpent.toFixed(2)} / {currentCard.monthlyLimit.toFixed(2)} USDT</span>
+                </div>
+                <div className="w-full bg-gray-200 rounded-full h-2">
+                  <div 
+                    className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                    style={{ width: `${(currentCard.monthlySpent / currentCard.monthlyLimit) * 100}%` }}
+                  />
+                </div>
+                <p className="text-xs text-gray-500 mt-1">
+                  {((currentCard.monthlySpent / currentCard.monthlyLimit) * 100).toFixed(1)}% of monthly limit
+                </p>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-200">
+                <div>
+                  <p className="text-gray-600 text-sm">Issue Date</p>
+                  <p className="font-medium">{new Date(currentCard.issueDate).toLocaleDateString()}</p>
+                </div>
+                <div>
+                  <p className="text-gray-600 text-sm">Last Used</p>
+                  <p className="font-medium">
+                    {currentCard.lastUsed 
+                      ? new Date(currentCard.lastUsed).toLocaleDateString()
+                      : 'Never'
+                    }
                   </p>
                 </div>
-                
-                <div className="grid grid-cols-2 gap-4 pt-4 border-t border-gray-200">
-                  <div>
-                    <p className="text-gray-600 text-sm">Issue Date</p>
-                    <p className="font-medium">{new Date(currentCard.issueDate).toLocaleDateString()}</p>
+              </div>
+            </div>
+          </Card>
+
+          {/* Transaction List */}
+          <Card>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">Transaction History</h3>
+              <div className="flex items-center space-x-2">
+                <Button variant="outline" size="sm" icon={Filter}>
+                  Filter
+                </Button>
+                <Button variant="outline" size="sm" icon={Download}>
+                  Export
+                </Button>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {cardTransactions.map((transaction) => (
+                <div key={transaction.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                  <div className="flex items-center space-x-4">
+                    <div className="text-2xl">{transaction.icon}</div>
+                    <div>
+                      <h4 className="font-medium text-gray-900">{transaction.merchant}</h4>
+                      <div className="flex items-center space-x-2 text-sm text-gray-600">
+                        <span>{transaction.category}</span>
+                        {transaction.location && (
+                          <>
+                            <span>•</span>
+                            <span className="flex items-center">
+                              <MapPin className="w-3 h-3 mr-1" />
+                              {transaction.location}
+                            </span>
+                          </>
+                        )}
+                      </div>
+                      <p className="text-xs text-gray-500">
+                        {new Date(transaction.date).toLocaleString()}
+                      </p>
+                    </div>
                   </div>
-                  <div>
-                    <p className="text-gray-600 text-sm">Last Used</p>
-                    <p className="font-medium">
-                      {currentCard.lastUsed 
-                        ? new Date(currentCard.lastUsed).toLocaleDateString()
-                        : 'Never'
-                      }
+                  <div className="text-right">
+                    <p className={`font-semibold ${
+                      transaction.amount > 0 ? 'text-green-600' : 'text-gray-900'
+                    }`}>
+                      {transaction.amount > 0 ? '+' : ''}{Math.abs(transaction.amount).toFixed(2)} USDT
+                    </p>
+                    <p className={`text-xs px-2 py-1 rounded-full ${
+                      transaction.status === 'completed' ? 'bg-green-100 text-green-800' :
+                      transaction.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-red-100 text-red-800'
+                    }`}>
+                      {transaction.status}
                     </p>
                   </div>
                 </div>
-              </div>
-            </Card>
-          </div>
-        )}
+              ))}
 
-        {activeTab === 'transactions' && (
-          <div className="space-y-6">
-            {/* Transaction Filters */}
-            <Card>
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-semibold text-gray-900">Transaction History</h3>
-                <div className="flex items-center space-x-2">
-                  <Button variant="outline" size="sm" icon={Filter}>
-                    Filter
-                  </Button>
-                  <Button variant="outline" size="sm" icon={Download}>
-                    Export
-                  </Button>
+              {cardTransactions.length === 0 && (
+                <div className="text-center py-8">
+                  <Clock className="w-12 h-12 text-gray-400 mx-auto mb-3" />
+                  <p className="text-gray-500">No transactions yet</p>
+                  <p className="text-sm text-gray-400 mt-1">Start using your card to see transaction history</p>
                 </div>
-              </div>
-            </Card>
-
-            {/* Transaction List */}
-            <Card>
-              <div className="space-y-4">
-                {cardTransactions.map((transaction) => (
-                  <div key={transaction.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                    <div className="flex items-center space-x-4">
-                      <div className="text-2xl">{transaction.icon}</div>
-                      <div>
-                        <h4 className="font-medium text-gray-900">{transaction.merchant}</h4>
-                        <div className="flex items-center space-x-2 text-sm text-gray-600">
-                          <span>{transaction.category}</span>
-                          {transaction.location && (
-                            <>
-                              <span>•</span>
-                              <span className="flex items-center">
-                                <MapPin className="w-3 h-3 mr-1" />
-                                {transaction.location}
-                              </span>
-                            </>
-                          )}
-                        </div>
-                        <p className="text-xs text-gray-500">
-                          {new Date(transaction.date).toLocaleString()}
-                        </p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className={`font-semibold ${
-                        transaction.amount > 0 ? 'text-green-600' : 'text-gray-900'
-                      }`}>
-                        {transaction.amount > 0 ? '+' : ''}{Math.abs(transaction.amount).toFixed(2)} USDT
-                      </p>
-                      <p className={`text-xs px-2 py-1 rounded-full ${
-                        transaction.status === 'completed' ? 'bg-green-100 text-green-800' :
-                        transaction.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                      }`}>
-                        {transaction.status}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-
-                {cardTransactions.length === 0 && (
-                  <div className="text-center py-8">
-                    <Clock className="w-12 h-12 text-gray-400 mx-auto mb-3" />
-                    <p className="text-gray-500">No transactions yet</p>
-                    <p className="text-sm text-gray-400 mt-1">Start using your card to see transaction history</p>
-                  </div>
-                )}
-              </div>
-            </Card>
-          </div>
-        )}
-
-        {activeTab === 'settings' && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Card Controls */}
-            <Card>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Card Controls</h3>
-              
-              <div className="space-y-4">
-                <div className="flex justify-between items-center p-3 border border-gray-200 rounded-lg">
-                  <div>
-                    <p className="font-medium text-gray-900">Lock Card</p>
-                    <p className="text-sm text-gray-600">Temporarily disable all transactions</p>
-                  </div>
-                  <Button
-                    variant={currentCard.status === 'locked' ? 'primary' : 'outline'}
-                    size="sm"
-                    icon={currentCard.status === 'locked' ? Unlock : Lock}
-                  >
-                    {currentCard.status === 'locked' ? 'Unlock' : 'Lock'}
-                  </Button>
-                </div>
-                
-                <div className="flex justify-between items-center p-3 border border-gray-200 rounded-lg">
-                  <div>
-                    <p className="font-medium text-gray-900">Set as Default</p>
-                    <p className="text-sm text-gray-600">Use for all payments by default</p>
-                  </div>
-                  <Button
-                    variant={currentCard.isDefault ? 'secondary' : 'primary'}
-                    size="sm"
-                    icon={Star}
-                    disabled={currentCard.isDefault}
-                  >
-                    {currentCard.isDefault ? 'Default' : 'Set Default'}
-                  </Button>
-                </div>
-                
-                <div className="flex justify-between items-center p-3 border border-gray-200 rounded-lg">
-                  <div>
-                    <p className="font-medium text-gray-900">Monthly Limit</p>
-                    <p className="text-sm text-gray-600">Current: ${currentCard.monthlyLimit}</p>
-                  </div>
-                  <Button variant="outline" size="sm" icon={Settings}>
-                    Change
-                  </Button>
-                </div>
-              </div>
-            </Card>
-
-            {/* Security Settings */}
-            <Card>
-              <h3 className="text-lg font-semibold text-gray-900 mb-4">Security Settings</h3>
-              
-              <div className="space-y-4">
-                <div className="flex justify-between items-center p-3 border border-gray-200 rounded-lg">
-                  <div>
-                    <p className="font-medium text-gray-900">Transaction Notifications</p>
-                    <p className="text-sm text-gray-600">Get notified for all transactions</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" className="sr-only peer" defaultChecked />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                  </label>
-                </div>
-                
-                <div className="flex justify-between items-center p-3 border border-gray-200 rounded-lg">
-                  <div>
-                    <p className="font-medium text-gray-900">Online Payments</p>
-                    <p className="text-sm text-gray-600">Allow online transactions</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" className="sr-only peer" defaultChecked />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                  </label>
-                </div>
-                
-                <div className="flex justify-between items-center p-3 border border-gray-200 rounded-lg">
-                  <div>
-                    <p className="font-medium text-gray-900">ATM Withdrawals</p>
-                    <p className="text-sm text-gray-600">Allow ATM cash withdrawals</p>
-                  </div>
-                  <label className="relative inline-flex items-center cursor-pointer">
-                    <input type="checkbox" className="sr-only peer" />
-                    <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-blue-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-blue-600"></div>
-                  </label>
-                </div>
-              </div>
-            </Card>
-          </div>
-        )}
+              )}
+            </div>
+          </Card>
+        </div>
       </div>
 
       {/* Card Selector Modal */}

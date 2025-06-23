@@ -7,45 +7,50 @@ import {
   Activity, 
   Zap,
   ArrowUpRight,
-  ArrowDownRight,
   Settings,
   Wallet,
   CreditCard,
-  Target,
   Crown,
-  Star,
   Clock,
   Play,
   Pause,
   Gift,
-  Award,
-  Flame,
   RefreshCw,
-  ExternalLink,
   UserPlus,
-  Sparkles,
-  Shield,
-  CheckCircle,
-  AlertTriangle,
-  Info,
-  Bell,
-  Calendar,
-  TrendingDown,
-  BarChart3
+  Target,
+  Star,
+  CheckCircle
 } from 'lucide-react';
 import { StatsCard, Button, Card } from '../components/ui';
 import { NetworkSwitch } from '../components/ui/NetworkSwitch';
 import { useWeb3Auth } from '../providers/Web3AuthProvider';
+import { SupabaseMiningService } from '../lib/supabase/services';
+import { MiningSession, UserProfile } from '../lib/supabase/types';
 import { CURRENT_NETWORK } from '../config/networks';
 
 const DashboardPage: React.FC = () => {
   const navigate = useNavigate();
-  const { user, address, balance, chainId, networkName, isConnected } = useWeb3Auth();
+  const { 
+    user, 
+    address, 
+    balance, 
+    chainId, 
+    networkName, 
+    isConnected,
+    supabaseUser,
+    isSupabaseConnected,
+    refreshSupabaseUser
+  } = useWeb3Auth();
   
-  // 마이닝 상태 (로컬스토리지에서 복원)
+  // Supabase에서 가져온 데이터 상태
+  const [miningHistory, setMiningHistory] = useState<MiningSession[]>([]);
+  const [activeMiningSession, setActiveMiningSession] = useState<MiningSession | null>(null);
+  const [isLoadingSupabaseData, setIsLoadingSupabaseData] = useState(false);
+  
+  // 로컬 마이닝 상태 (UI용)
   const [miningStats, setMiningStats] = useState({
     isActive: false,
-    currentSession: 0, // seconds
+    currentSession: 0,
     todayEarnings: 0.0245,
     totalEarnings: 1.2345,
     efficiency: 87.3,
@@ -64,75 +69,79 @@ const DashboardPage: React.FC = () => {
 
   // 지갑 데이터
   const [walletStats] = useState({
-    totalValue: 1250.45, // USD
+    totalValue: 1250.45,
     bnbBalance: parseFloat(balance || '0'),
     dubuBalance: 1234.5678,
-    dubuPrice: 0.85, // USD per DUBU
-    cardBalance: 750.30 // USDT
+    dubuPrice: 0.85,
+    cardBalance: 750.30
   });
 
-  // 최근 활동
-  const [recentActivities] = useState([
-    {
-      id: 1,
-      type: 'mining',
-      title: 'Mining session completed',
-      description: '24-hour session • +0.0245 BNB earned',
-      time: '2 minutes ago',
-      amount: '+₿0.0245',
-      icon: Zap,
-      color: 'text-blue-600 bg-blue-100'
-    },
-    {
-      id: 2,
-      type: 'referral',
-      title: 'Referral bonus received',
-      description: 'Alice completed first mining session',
-      time: '1 hour ago',
-      amount: '+125 DUBU',
-      icon: Gift,
-      color: 'text-purple-600 bg-purple-100'
-    },
-    {
-      id: 3,
-      type: 'card',
-      title: 'Card top-up completed',
-      description: 'Charged 500 DUBU → 425 USDT',
-      time: '3 hours ago',
-      amount: '+$425.00',
-      icon: CreditCard,
-      color: 'text-green-600 bg-green-100'
-    },
-    {
-      id: 4,
-      type: 'team',
-      title: 'Team rank improved',
-      description: 'Diamond Miners moved to rank #3',
-      time: '1 day ago',
-      amount: null,
-      icon: Crown,
-      color: 'text-yellow-600 bg-yellow-100'
-    }
-  ]);
-
-  // 마이닝 상태 복원
-  useEffect(() => {
-    const savedMiningState = localStorage.getItem('miningState');
-    if (savedMiningState) {
-      const { isMining, startTime } = JSON.parse(savedMiningState);
-      if (isMining && startTime) {
+  // Supabase 데이터 로드
+  const loadSupabaseData = async () => {
+    if (!supabaseUser || !isSupabaseConnected) return;
+    
+    setIsLoadingSupabaseData(true);
+    try {
+      console.log('📊 [Dashboard] Supabase 데이터 로딩 중...');
+      
+      // 마이닝 히스토리 가져오기
+      const history = await SupabaseMiningService.getMiningHistory(supabaseUser.id, 10);
+      setMiningHistory(history);
+      
+      // 활성 마이닝 세션 확인
+      const activeSession = await SupabaseMiningService.getActiveMiningSession(supabaseUser.id);
+      setActiveMiningSession(activeSession);
+      
+      // 활성 세션이 있으면 마이닝 상태 업데이트
+      if (activeSession) {
+        const startTime = new Date(activeSession.start_time).getTime();
         const elapsed = Math.floor((Date.now() - startTime) / 1000);
-        const TOTAL_MINING_TIME = 86400; // 24시간
-        if (elapsed < TOTAL_MINING_TIME) {
-          setMiningStats(prev => ({
-            ...prev,
-            isActive: true,
-            currentSession: elapsed
-          }));
-        }
+        
+        setMiningStats(prev => ({
+          ...prev,
+          isActive: true,
+          currentSession: elapsed,
+          efficiency: activeSession.efficiency || prev.efficiency,
+          hashRate: activeSession.hash_rate || prev.hashRate
+        }));
       }
+      
+      console.log('✅ [Dashboard] Supabase 데이터 로딩 완료:', {
+        historyCount: history.length,
+        hasActiveSession: !!activeSession
+      });
+    } catch (error) {
+      console.error('❌ [Dashboard] Supabase 데이터 로딩 실패:', error);
+    } finally {
+      setIsLoadingSupabaseData(false);
     }
-  }, []);
+  };
+
+
+
+  // 컴포넌트 마운트시 Supabase 데이터 로드
+  useEffect(() => {
+    if (isSupabaseConnected && supabaseUser) {
+      loadSupabaseData();
+    }
+  }, [isSupabaseConnected, supabaseUser]);
+
+  // 1초마다 활성 마이닝 세션 시간 업데이트
+  useEffect(() => {
+    if (!activeMiningSession || !miningStats.isActive) return;
+    
+    const interval = setInterval(() => {
+      const startTime = new Date(activeMiningSession.start_time).getTime();
+      const elapsed = Math.floor((Date.now() - startTime) / 1000);
+      
+      setMiningStats(prev => ({
+        ...prev,
+        currentSession: elapsed
+      }));
+    }, 1000);
+    
+    return () => clearInterval(interval);
+  }, [activeMiningSession, miningStats.isActive]);
 
   // 통계 데이터 계산
   const statsData = useMemo(() => [
@@ -192,21 +201,47 @@ const DashboardPage: React.FC = () => {
               <h2 className="text-xl md:text-2xl font-bold text-gray-900 mb-2 flex items-center">
                 <span className="mr-3">👋</span>
                 Welcome back, {user?.name || user?.email?.split('@')[0] || 'Miner'}!
+                {isSupabaseConnected && (
+                  <span className="ml-2 px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+                    DB Connected
+                  </span>
+                )}
               </h2>
               <p className="text-sm md:text-base text-gray-600">
                 Here's your mining empire overview
               </p>
             </div>
-            <Button
-              onClick={() => navigate('/settings')}
-              variant="outline"
-              icon={Settings}
-              className="hidden md:flex"
-            >
-              Settings
-            </Button>
+            <div className="flex space-x-2">
+              <Button
+                onClick={loadSupabaseData}
+                variant="outline"
+                size="sm"
+                loading={isLoadingSupabaseData}
+                icon={RefreshCw}
+              >
+                Sync
+              </Button>
+              <Button
+                onClick={() => navigate('/settings')}
+                variant="outline"
+                icon={Settings}
+                className="hidden md:flex"
+              >
+                Settings
+              </Button>
+            </div>
           </div>
         </div>
+
+        {/* Supabase 연결 상태 표시 */}
+        {!isSupabaseConnected && isConnected && (
+          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <p className="text-yellow-800">
+              ⚠️ Supabase 데이터베이스에 연결되지 않았습니다. 
+              일부 기능이 제한될 수 있습니다.
+            </p>
+          </div>
+        )}
 
         {/* Network Switch */}
         <NetworkSwitch />
@@ -235,6 +270,11 @@ const DashboardPage: React.FC = () => {
               <h3 className="text-lg font-semibold text-gray-900 flex items-center">
                 <Zap className="w-5 h-5 mr-2" />
                 Mining Status
+                {isSupabaseConnected && (
+                  <span className="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded">
+                    Live
+                  </span>
+                )}
               </h3>
               <div className={`px-2 py-1 rounded-full text-xs font-medium ${
                 miningStats.isActive 
@@ -253,6 +293,11 @@ const DashboardPage: React.FC = () => {
                   <p className="font-bold text-gray-900">
                     {miningStats.isActive ? formatTime(miningStats.currentSession) : '--:--:--'}
                   </p>
+                  {activeMiningSession && (
+                    <p className="text-xs text-blue-600">
+                      Session ID: {activeMiningSession.id.slice(0, 8)}...
+                    </p>
+                  )}
                 </div>
                 <div className="text-right">
                   <p className="text-sm text-gray-600">Progress</p>
@@ -274,7 +319,7 @@ const DashboardPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Mining Action */}
+              {/* Mining Action - EarnPage로 이동 */}
               <Button
                 onClick={() => navigate('/earn')}
                 variant={miningStats.isActive ? "secondary" : "primary"}
@@ -283,6 +328,69 @@ const DashboardPage: React.FC = () => {
               >
                 {miningStats.isActive ? 'Manage Mining' : 'Start Mining'}
               </Button>
+            </div>
+          </Card>
+
+          {/* Mining History - Supabase 데이터 */}
+          <Card className="lg:col-span-1">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                <Clock className="w-5 h-5 mr-2" />
+                Mining History
+              </h3>
+              <Button
+                onClick={loadSupabaseData}
+                variant="outline"
+                size="sm"
+                loading={isLoadingSupabaseData}
+                icon={RefreshCw}
+              >
+                Refresh
+              </Button>
+            </div>
+
+            <div className="space-y-3">
+              {miningHistory.length > 0 ? (
+                miningHistory.slice(0, 5).map((session) => (
+                  <div key={session.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {session.status === 'completed' ? 'Completed' : 'Active'}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(session.start_time).toLocaleDateString()}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-green-600">
+                        +{session.earnings_bnb?.toFixed(4) || '0.0000'} BNB
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {session.duration_seconds ? 
+                          formatTime(session.duration_seconds) : 
+                          'In Progress'
+                        }
+                      </p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  {isSupabaseConnected ? (
+                    <div>
+                      <Zap className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                      <p>No mining history yet</p>
+                      <p className="text-sm">Start your first mining session!</p>
+                    </div>
+                  ) : (
+                    <div>
+                      <Settings className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                      <p>Database not connected</p>
+                      <p className="text-sm">Connect to view history</p>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </Card>
 
@@ -363,234 +471,45 @@ const DashboardPage: React.FC = () => {
               </div>
             </div>
           </Card>
-
-          {/* Team Overview */}
-          <Card className="lg:col-span-1">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                <Users className="w-5 h-5 mr-2" />
-                Team Status
-              </h3>
-              <Button
-                onClick={() => navigate('/team')}
-                variant="outline"
-                size="sm"
-                icon={ArrowUpRight}
-              >
-                Manage
-              </Button>
-            </div>
-
-            <div className="space-y-4">
-              {/* Team Info */}
-              <div className="p-3 bg-gradient-to-r from-yellow-50 to-orange-50 border border-yellow-200 rounded-lg">
-                <div className="flex items-center justify-between mb-2">
-                  <h4 className="font-semibold text-yellow-900">{teamStats.teamName}</h4>
-                  <Crown className="w-5 h-5 text-yellow-600" />
-                </div>
-                <div className="grid grid-cols-2 gap-2 text-sm">
-                  <div>
-                    <p className="text-yellow-700">Rank</p>
-                    <p className="font-bold text-yellow-900">#{teamStats.teamRank}</p>
-                  </div>
-                  <div>
-                    <p className="text-yellow-700">Members</p>
-                    <p className="font-bold text-yellow-900">{teamStats.teamMembers}</p>
-                  </div>
-                </div>
-              </div>
-
-              {/* Referral Stats */}
-              <div className="grid grid-cols-2 gap-3">
-                <div className="text-center p-3 bg-purple-50 rounded-lg">
-                  <p className="text-lg font-bold text-purple-600">{teamStats.myReferrals}</p>
-                  <p className="text-xs text-gray-600">My Referrals</p>
-                </div>
-                <div className="text-center p-3 bg-green-50 rounded-lg">
-                  <p className="text-lg font-bold text-green-600">₿{teamStats.referralEarnings.toFixed(3)}</p>
-                  <p className="text-xs text-gray-600">Commission</p>
-                </div>
-              </div>
-
-              {/* Quick Action */}
-              <Button
-                onClick={() => navigate('/team')}
-                variant="outline"
-                className="w-full"
-                icon={UserPlus}
-              >
-                Invite Friends
-              </Button>
-            </div>
-          </Card>
         </div>
 
-        {/* Recent Activities */}
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Activity Feed */}
-          <Card className="lg:col-span-2">
-            <div className="flex items-center justify-between mb-6">
-              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
-                <Clock className="w-5 h-5 mr-2" />
-                Recent Activities
-              </h3>
-              <Button
-                variant="outline"
-                size="sm"
-                icon={RefreshCw}
-              >
-                Refresh
-              </Button>
-            </div>
-
-            <div className="space-y-4">
-              {recentActivities.map((activity) => (
-                <div key={activity.id} className="flex items-start space-x-4 p-4 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
-                  <div className={`w-10 h-10 rounded-full flex items-center justify-center ${activity.color}`}>
-                    <activity.icon className="w-5 h-5" />
-                  </div>
-                  
-                  <div className="flex-1 min-w-0">
-                    <p className="font-medium text-gray-900">{activity.title}</p>
-                    <p className="text-sm text-gray-600">{activity.description}</p>
-                    <p className="text-xs text-gray-500 mt-1">{activity.time}</p>
-                  </div>
-                  
-                  {activity.amount && (
-                    <div className="text-right">
-                      <p className={`font-semibold ${
-                        activity.amount.startsWith('+') ? 'text-green-600' : 'text-red-600'
-                      }`}>
-                        {activity.amount}
-                      </p>
-                    </div>
-                  )}
-                </div>
-              ))}
-            </div>
-          </Card>
-
-          {/* Quick Actions */}
-          <Card>
-            <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
-              <Target className="w-5 h-5 mr-2" />
-              Quick Actions
-            </h3>
-
-            <div className="space-y-3">
-              <Button
-                onClick={() => navigate('/earn')}
-                variant="primary"
-                className="w-full justify-start"
-                icon={Play}
-              >
-                <div className="text-left">
-                  <p className="font-medium">Start Mining</p>
-                  <p className="text-xs opacity-80">Begin 24h session</p>
-                </div>
-              </Button>
-
-              <Button
-                onClick={() => navigate('/card')}
-                variant="outline"
-                className="w-full justify-start"
-                icon={CreditCard}
-              >
-                <div className="text-left">
-                  <p className="font-medium">Top Up Card</p>
-                  <p className="text-xs text-gray-500">Add DUBU to card</p>
-                </div>
-              </Button>
-
-              <Button
-                onClick={() => navigate('/team')}
-                variant="outline"
-                className="w-full justify-start"
-                icon={Gift}
-              >
-                <div className="text-left">
-                  <p className="font-medium">Share Referral</p>
-                  <p className="text-xs text-gray-500">Earn commission</p>
-                </div>
-              </Button>
-
-              <Button
-                onClick={() => navigate('/wallet')}
-                variant="outline"
-                className="w-full justify-start"
-                icon={ArrowDownRight}
-              >
-                <div className="text-left">
-                  <p className="font-medium">Send/Receive</p>
-                  <p className="text-xs text-gray-500">Manage tokens</p>
-                </div>
-              </Button>
-            </div>
-
-            {/* Daily Goals */}
-            <div className="mt-6 pt-6 border-t border-gray-200">
-              <h4 className="font-medium text-gray-900 mb-3 flex items-center">
-                <Star className="w-4 h-4 mr-2" />
-                Daily Goals
-              </h4>
-              
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Complete mining session</span>
+        {/* Supabase 연결 상태 정보 패널 */}
+        {isSupabaseConnected && supabaseUser && (
+          <div className="mt-8 p-6 bg-gradient-to-r from-green-50 to-blue-50 border border-green-200 rounded-xl">
+            <div className="flex items-start space-x-4">
+              <div className="p-3 bg-green-100 rounded-lg">
+                <CheckCircle className="w-6 h-6 text-green-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-lg font-semibold text-gray-900 mb-2">
+                  Database Connected & Synced
+                </h3>
+                <p className="text-gray-600 mb-4">
+                  Your mining data is being securely stored and synchronized with our database. 
+                  All your mining sessions, earnings, and team activities are tracked in real-time.
+                </p>
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
                   <div className="flex items-center space-x-2">
-                    {miningStats.isActive ? (
-                      <CheckCircle className="w-4 h-4 text-green-500" />
-                    ) : (
-                      <div className="w-4 h-4 border border-gray-300 rounded-full" />
-                    )}
+                    <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                    <span className="text-gray-700">Real-time Sync</span>
                   </div>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Check team activity</span>
-                  <CheckCircle className="w-4 h-4 text-green-500" />
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <span className="text-sm text-gray-600">Share referral link</span>
-                  <div className="w-4 h-4 border border-gray-300 rounded-full" />
-                </div>
-              </div>
-            </div>
-          </Card>
-        </div>
-
-        {/* Network Information Panel */}
-        <div className="mt-8 p-6 bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 rounded-xl">
-          <div className="flex items-start space-x-4">
-            <div className="p-3 bg-blue-100 rounded-lg">
-              <TrendingUp className="w-6 h-6 text-blue-600" />
-            </div>
-            <div className="flex-1">
-              <h3 className="text-lg font-semibold text-gray-900 mb-2">
-                Mining on {CURRENT_NETWORK.displayName}
-              </h3>
-              <p className="text-gray-600 mb-4">
-                Your mining operations are running on Binance Smart Chain {CURRENT_NETWORK.name === 'BSC Testnet' ? 'Testnet' : 'Mainnet'}. 
-                {CURRENT_NETWORK.faucetUrl ? ' Test your operations with free test tokens.' : ' Secure and efficient mining.'}
-              </p>
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                  <span className="text-gray-700">Low Gas Fees</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                  <span className="text-gray-700">Fast Transactions</span>
-                </div>
-                <div className="flex items-center space-x-2">
-                  <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
-                  <span className="text-gray-700">EVM Compatible</span>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
+                    <span className="text-gray-700">Secure Storage</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-purple-500 rounded-full"></div>
+                    <span className="text-gray-700">Session Tracking</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-2 h-2 bg-yellow-500 rounded-full"></div>
+                    <span className="text-gray-700">History Backup</span>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );

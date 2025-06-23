@@ -1,8 +1,11 @@
+// src/providers/Web3AuthProvider.tsx (수정된 버전)
 import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import { WALLET_ADAPTERS, ADAPTER_EVENTS, IProvider } from "@web3auth/base";
 import Web3 from "web3";
 import web3auth, { CURRENT_NETWORK } from '../lib/web3auth/config';
 import { Web3AuthContextType, Web3AuthState, Web3AuthUser, LoginProvider } from '../types/web3auth.types';
+import { SupabaseAuthService, SupabaseSessionService, SupabaseMiningService } from '../lib/supabase/services';
+import { UserProfile } from '../lib/supabase/types';
 
 // Ethereum RPC Error 타입 정의
 interface EthereumRpcError extends Error {
@@ -11,19 +14,34 @@ interface EthereumRpcError extends Error {
   data?: unknown;
 }
 
-// Provider 타입 확장 (IProvider의 request 메서드와 호환되도록)
+// Provider 타입 확장
 type Web3Provider = IProvider & {
   request?: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
 };
 
-const Web3AuthContext = createContext<Web3AuthContextType | null>(null);
+// 확장된 상태 타입 (Supabase 정보 포함)
+interface ExtendedWeb3AuthState extends Web3AuthState {
+  supabaseUser: UserProfile | null;
+  isSupabaseConnected: boolean;
+}
+
+// 확장된 컨텍스트 타입
+interface ExtendedWeb3AuthContextType extends Web3AuthContextType {
+  supabaseUser: UserProfile | null;
+  isSupabaseConnected: boolean;
+  refreshSupabaseUser: () => Promise<void>;
+  startMiningSession: () => Promise<boolean>;
+  endMiningSession: (sessionId: string, earnings: number) => Promise<boolean>;
+}
+
+const Web3AuthContext = createContext<ExtendedWeb3AuthContextType | null>(null);
 
 interface Web3AuthProviderProps {
   children: ReactNode;
 }
 
 export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) => {
-  const [state, setState] = useState<Web3AuthState>({
+  const [state, setState] = useState<ExtendedWeb3AuthState>({
     isLoading: true,
     isConnected: false,
     user: null,
@@ -32,7 +50,68 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
     balance: null,
     chainId: null,
     networkName: null,
+    supabaseUser: null,
+    isSupabaseConnected: false,
   });
+
+  // Supabase 사용자 정보 새로고침
+  const refreshSupabaseUser = useCallback(async () => {
+    if (!state.address) return;
+
+    try {
+      console.log('🔄 [Supabase] 사용자 정보 새로고침 중...');
+      const supabaseUser = await SupabaseAuthService.getUserByWalletAddress(state.address);
+      
+      setState(prev => ({
+        ...prev,
+        supabaseUser,
+        isSupabaseConnected: !!supabaseUser,
+      }));
+
+      console.log('✅ [Supabase] 사용자 정보 새로고침 완료:', supabaseUser ? '사용자 존재' : '사용자 없음');
+    } catch (error) {
+      console.error('❌ [Supabase] 사용자 정보 새로고침 실패:', error);
+    }
+  }, [state.address]);
+
+  // Web3Auth 사용자를 Supabase에 동기화
+  const syncUserToSupabase = useCallback(async (web3AuthUser: Web3AuthUser, walletAddress: string) => {
+    try {
+      console.log('🔄 [Supabase] 사용자 동기화 시작...');
+
+      const userData = {
+        walletAddress,
+        email: web3AuthUser.email,
+        name: web3AuthUser.name,
+        profileImage: web3AuthUser.profileImage,
+        loginProvider: web3AuthUser.typeOfLogin || 'unknown',
+        verifier: web3AuthUser.verifier,
+        verifierId: web3AuthUser.verifierId,
+      };
+
+      const supabaseUser = await SupabaseAuthService.upsertUser(userData);
+      
+      if (supabaseUser) {
+        // 세션 생성
+        await SupabaseSessionService.createSession(supabaseUser);
+        
+        setState(prev => ({
+          ...prev,
+          supabaseUser,
+          isSupabaseConnected: true,
+        }));
+
+        console.log('✅ [Supabase] 사용자 동기화 성공');
+        return supabaseUser;
+      } else {
+        console.error('❌ [Supabase] 사용자 동기화 실패');
+        return null;
+      }
+    } catch (error) {
+      console.error('❌ [Supabase] 사용자 동기화 중 오류:', error);
+      return null;
+    }
+  }, []);
 
   const updateUserInfo = useCallback(async () => {
     try {
@@ -62,7 +141,7 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
         networkName
       });
 
-      setState((prev: Web3AuthState) => ({
+      setState((prev: ExtendedWeb3AuthState) => ({
         ...prev,
         isConnected: true,
         user,
@@ -74,12 +153,17 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
         isLoading: false,
       }));
 
-      // localStorage에 사용자 정보 저장 (페이지 새로고침시 복원용)
+      // localStorage에 사용자 정보 저장
       if (user) {
         localStorage.setItem('isAuthenticated', 'true');
         localStorage.setItem('userData', JSON.stringify(user));
         localStorage.setItem('userAddress', address || '');
         localStorage.setItem('chainId', chainId?.toString() || '');
+      }
+
+      // Supabase에 사용자 동기화
+      if (user && address) {
+        await syncUserToSupabase(user, address);
       }
 
       // 네트워크 체크
@@ -88,27 +172,42 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
       }
     } catch (error) {
       console.error('❌ [Web3Auth] Error updating user info:', error);
-      setState((prev: Web3AuthState) => ({ ...prev, isLoading: false }));
+      setState((prev: ExtendedWeb3AuthState) => ({ ...prev, isLoading: false }));
     }
+  }, [syncUserToSupabase]);
+
+  // 세션 복원 체크
+  useEffect(() => {
+    const checkExistingSession = () => {
+      const sessionUser = SupabaseSessionService.validateSession();
+      if (sessionUser) {
+        console.log('🔄 [Supabase] 기존 세션 발견, 복원 중...');
+        setState(prev => ({
+          ...prev,
+          supabaseUser: sessionUser,
+          isSupabaseConnected: true,
+        }));
+      }
+    };
+
+    checkExistingSession();
   }, []);
 
   useEffect(() => {
     const init = async () => {
       try {
         console.log(`🔄 [Web3Auth] Initializing for ${CURRENT_NETWORK.displayName}...`);
-        setState((prev: Web3AuthState) => ({ ...prev, isLoading: true }));
+        setState((prev: ExtendedWeb3AuthState) => ({ ...prev, isLoading: true }));
         
-        // Web3Auth 초기화
         await web3auth.initModal();
         console.log(`✅ [Web3Auth] Modal initialized for ${CURRENT_NETWORK.displayName}`);
         
-        // 기존 연결 확인
         if (web3auth.connected) {
           console.log('🔗 [Web3Auth] Already connected, updating user info...');
           await updateUserInfo();
         } else {
           console.log('🚫 [Web3Auth] Not connected');
-          setState((prev: Web3AuthState) => ({ 
+          setState((prev: ExtendedWeb3AuthState) => ({ 
             ...prev, 
             isLoading: false,
             networkName: CURRENT_NETWORK.displayName,
@@ -117,7 +216,7 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
         }
       } catch (error) {
         console.error('❌ [Web3Auth] Initialization error:', error);
-        setState((prev: Web3AuthState) => ({ ...prev, isLoading: false }));
+        setState((prev: ExtendedWeb3AuthState) => ({ ...prev, isLoading: false }));
       }
     };
 
@@ -125,7 +224,6 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
   }, [updateUserInfo]);
 
   useEffect(() => {
-    // Web3Auth 이벤트 리스너
     const handleConnected = () => {
       console.log('🎉 [Web3Auth] Connected event fired');
       updateUserInfo();
@@ -133,6 +231,10 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
 
     const handleDisconnected = () => {
       console.log('👋 [Web3Auth] Disconnected event fired');
+      
+      // Supabase 세션도 정리
+      SupabaseSessionService.clearSession();
+      
       setState({
         isLoading: false,
         isConnected: false,
@@ -142,12 +244,14 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
         balance: null,
         chainId: CURRENT_NETWORK.chainId,
         networkName: CURRENT_NETWORK.displayName,
+        supabaseUser: null,
+        isSupabaseConnected: false,
       });
     };
 
     const handleConnecting = () => {
       console.log(`⏳ [Web3Auth] Connecting to ${CURRENT_NETWORK.displayName}...`);
-      setState((prev: Web3AuthState) => ({ ...prev, isLoading: true }));
+      setState((prev: ExtendedWeb3AuthState) => ({ ...prev, isLoading: true }));
     };
 
     web3auth.on(ADAPTER_EVENTS.CONNECTED, handleConnected);
@@ -161,6 +265,7 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
     };
   }, [updateUserInfo]);
 
+  // 기존 Web3Auth 메서드들
   const getUserInfo = async (): Promise<Web3AuthUser | null> => {
     try {
       if (!web3auth.connected) return null;
@@ -230,17 +335,15 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
   const login = async (loginProvider?: LoginProvider) => {
     try {
       console.log('🚪 [Web3Auth] Starting login with provider:', loginProvider);
-      setState((prev: Web3AuthState) => ({ ...prev, isLoading: true }));
+      setState((prev: ExtendedWeb3AuthState) => ({ ...prev, isLoading: true }));
 
       let provider: IProvider | null = null;
 
       if (loginProvider && loginProvider !== 'web3auth') {
-        // 특정 소셜 로그인 제공자 지정
         provider = await web3auth.connectTo(WALLET_ADAPTERS.OPENLOGIN, {
           loginProvider: loginProvider === 'email_passwordless' ? 'email_passwordless' : loginProvider,
         });
       } else {
-        // Web3Auth 모달을 통한 일반 로그인
         provider = await web3auth.connect();
       }
 
@@ -249,11 +352,11 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
         await updateUserInfo();
       } else {
         console.log('❌ [Web3Auth] Login failed - no provider returned');
-        setState((prev: Web3AuthState) => ({ ...prev, isLoading: false }));
+        setState((prev: ExtendedWeb3AuthState) => ({ ...prev, isLoading: false }));
       }
     } catch (error) {
       console.error('❌ [Web3Auth] Login error:', error);
-      setState((prev: Web3AuthState) => ({ ...prev, isLoading: false }));
+      setState((prev: ExtendedWeb3AuthState) => ({ ...prev, isLoading: false }));
       throw error;
     }
   };
@@ -261,22 +364,22 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
   const logout = async () => {
     try {
       console.log('🔄 [Web3Auth] Starting logout...');
-      setState((prev: Web3AuthState) => ({ ...prev, isLoading: true }));
+      setState((prev: ExtendedWeb3AuthState) => ({ ...prev, isLoading: true }));
       
       if (web3auth.connected) {
         await web3auth.logout();
       }
       
-      // localStorage 정리
+      // localStorage 및 Supabase 세션 정리
       localStorage.removeItem('isAuthenticated');
       localStorage.removeItem('userData');
       localStorage.removeItem('userAddress');
       localStorage.removeItem('chainId');
       localStorage.removeItem('miningState');
+      SupabaseSessionService.clearSession();
       
       console.log('✅ [Web3Auth] Logout completed');
       
-      // 상태 초기화
       setState({
         isLoading: false,
         isConnected: false,
@@ -286,10 +389,11 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
         balance: null,
         chainId: CURRENT_NETWORK.chainId,
         networkName: CURRENT_NETWORK.displayName,
+        supabaseUser: null,
+        isSupabaseConnected: false,
       });
     } catch (error) {
       console.error('❌ [Web3Auth] Logout error:', error);
-      // 에러가 발생해도 상태 초기화
       setState({
         isLoading: false,
         isConnected: false,
@@ -299,6 +403,8 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
         balance: null,
         chainId: CURRENT_NETWORK.chainId,
         networkName: CURRENT_NETWORK.displayName,
+        supabaseUser: null,
+        isSupabaseConnected: false,
       });
       throw error;
     }
@@ -317,7 +423,6 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
         return false;
       }
 
-      // MetaMask 스타일의 네트워크 전환 요청
       await provider.request({
         method: 'wallet_switchEthereumChain',
         params: [{ chainId: CURRENT_NETWORK.chainIdHex }],
@@ -329,7 +434,6 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
     } catch (switchError) {
       const error = switchError as EthereumRpcError;
       
-      // 네트워크가 추가되지 않은 경우 추가 시도
       if (error.code === 4902) {
         try {
           const provider = web3auth.provider as Web3Provider;
@@ -379,7 +483,6 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
     }
   };
 
-  // Test BNB Faucet 링크 제공
   const getTestBNB = () => {
     if (CURRENT_NETWORK.faucetUrl) {
       window.open(CURRENT_NETWORK.faucetUrl, '_blank');
@@ -388,7 +491,40 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
     }
   };
 
-  const contextValue: Web3AuthContextType = {
+  // 마이닝 관련 Supabase 메서드들
+  const startMiningSession = async (): Promise<boolean> => {
+    try {
+      if (!state.supabaseUser) {
+        console.error('❌ [Mining] Supabase 사용자 정보가 없습니다');
+        return false;
+      }
+
+      const session = await SupabaseMiningService.startMiningSession(state.supabaseUser.id);
+      if (session) {
+        console.log('✅ [Mining] 마이닝 세션 시작:', session);
+        return true;
+      }
+      return false;
+    } catch (error) {
+      console.error('❌ [Mining] 마이닝 세션 시작 실패:', error);
+      return false;
+    }
+  };
+
+  const endMiningSession = async (sessionId: string, earnings: number): Promise<boolean> => {
+    try {
+      const success = await SupabaseMiningService.endMiningSession(sessionId, earnings);
+      if (success) {
+        console.log('✅ [Mining] 마이닝 세션 종료 성공');
+      }
+      return success;
+    } catch (error) {
+      console.error('❌ [Mining] 마이닝 세션 종료 실패:', error);
+      return false;
+    }
+  };
+
+  const contextValue: ExtendedWeb3AuthContextType = {
     ...state,
     login,
     logout,
@@ -400,6 +536,9 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
     switchToOpBNBTestnet: switchToCurrentNetwork,
     signMessage,
     getTestBNB,
+    refreshSupabaseUser,
+    startMiningSession,
+    endMiningSession,
   };
 
   return (
@@ -409,7 +548,7 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
   );
 };
 
-export const useWeb3Auth = (): Web3AuthContextType => {
+export const useWeb3Auth = (): ExtendedWeb3AuthContextType => {
   const context = useContext(Web3AuthContext);
   if (!context) {
     throw new Error('useWeb3Auth must be used within a Web3AuthProvider');

@@ -25,21 +25,32 @@ class EdgeFunctionClient {
     };
   }
 
-  // Web3Auth 기반 인증 헤더 생성
+  // Web3Auth 기반 인증 헤더 생성 (Base64 인코딩 사용)
   private getAuthHeaders(walletAddress?: string, signature?: string, message?: string) {
     const headers: Record<string, string> = { ...this.defaultHeaders };
     
     if (walletAddress && signature && message) {
-      headers['X-Wallet-Address'] = walletAddress;
-      headers['X-Signature'] = signature;
-      headers['X-Message'] = message;
+      try {
+        // Base64 인코딩을 사용하여 특수 문자 문제 해결
+        headers['X-Wallet-Address'] = btoa(encodeURIComponent(walletAddress));
+        headers['X-Signature'] = btoa(encodeURIComponent(signature));
+        headers['X-Message'] = btoa(encodeURIComponent(message));
+        headers['X-Encoded'] = 'base64'; // 인코딩 방식 표시
+      } catch (error) {
+        console.error('❌ [EdgeClient] 헤더 인코딩 실패:', error);
+        // 폴백: URL 인코딩만 사용
+        headers['X-Wallet-Address'] = encodeURIComponent(walletAddress);
+        headers['X-Signature'] = encodeURIComponent(signature);
+        headers['X-Message'] = encodeURIComponent(message);
+        headers['X-Encoded'] = 'url'; // 인코딩 방식 표시
+      }
     }
 
     return headers;
   }
 
   // Edge Function 호출
-  private async callEdgeFunction<T>(
+  protected async callEdgeFunction<T>(
     functionName: string,
     path: string = '',
     options: EdgeFunctionOptions = {}
@@ -69,7 +80,7 @@ class EdgeFunctionClient {
   }
 
   // 인증된 요청을 위한 헬퍼 메서드
-  private async callAuthenticatedEdgeFunction<T>(
+  protected async callAuthenticatedEdgeFunction<T>(
     functionName: string,
     path: string = '',
     options: EdgeFunctionOptions = {},
@@ -272,9 +283,9 @@ export class EdgeMiningService extends EdgeFunctionClient {
    */
   async startMiningSession(
     userId: string,
+    authData: { walletAddress: string; signature: string; message: string },
     hashRate?: number,
-    efficiency?: number,
-    authData: { walletAddress: string; signature: string; message: string }
+    efficiency?: number
   ): Promise<MiningSession | null> {
     try {
       const response = await this.callAuthenticatedEdgeFunction<MiningSession>(

@@ -561,9 +561,9 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
 
       const session = await edgeMiningService.startMiningSession(
         state.supabaseUser.id,
+        authData,
         15.2, // 기본 해시레이트
-        87.3, // 기본 효율성
-        authData
+        87.3  // 기본 효율성
       );
 
       if (session) {

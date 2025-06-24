@@ -1,4 +1,3 @@
-// src/providers/Web3AuthProvider.tsx (수정된 버전)
 import React, { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
 import { WALLET_ADAPTERS, ADAPTER_EVENTS, IProvider } from "@web3auth/base";
 import Web3 from "web3";

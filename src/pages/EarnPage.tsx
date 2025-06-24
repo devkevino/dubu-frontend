@@ -33,9 +33,16 @@ import {
   Plus,
   Dice6,
   ExternalLink,
-  UserPlus
+  UserPlus,
+  Database,
+  Wifi,
+  WifiOff,
+  AlertTriangle
 } from 'lucide-react';
 import { Button, StatsCard, Card, Input } from '../components/ui';
+import { useWeb3Auth } from '../providers/Web3AuthProvider';
+import { SupabaseMiningService } from '../lib/supabase/services';
+import { MiningSession } from '../lib/supabase/types';
 
 // Hash Rate 관련 인터페이스 - 수정됨
 interface HashRateData {
@@ -108,11 +115,22 @@ interface EarningsAnalysis {
 }
 
 const EarnPage: React.FC = () => {
+  const { 
+    supabaseUser, 
+    isSupabaseConnected,
+    startMiningSession: createMiningSession,
+    endMiningSession: completeMiningSession
+  } = useWeb3Auth();
+
+  // Supabase 연동 상태
   const [isMining, setIsMining] = useState(false);
   const [miningTime, setMiningTime] = useState(0); // seconds
   const [earnings, setEarnings] = useState(0);
   const [hashRate, setHashRate] = useState(12.0);
   const [miningStartTime, setMiningStartTime] = useState<number | null>(null);
+  const [activeMiningSession, setActiveMiningSession] = useState<MiningSession | null>(null);
+  const [miningHistory, setMiningHistory] = useState<MiningSession[]>([]);
+  const [isLoadingMiningData, setIsLoadingMiningData] = useState(false);
   
   // 등급 정보 - useMemo로 메모이제이션
   const gradeInfo: GradeInfo[] = useMemo(() => [
@@ -200,18 +218,153 @@ const EarnPage: React.FC = () => {
   // 레퍼럴 파워 상태
   const [referralCount, setReferralCount] = useState(8); // 임시 데이터
 
-  // 수익 분석 데이터 (임시)
-  const [earningsAnalysis] = useState<EarningsAnalysis>({
-    totalEarnings: 1.234567,
-    lastDayProfit: 0.024567,
-    thirtyDayProfit: 0.689432,
-    avgDailyEarnings: 0.022980,
-    bestDailyRecord: 0.035674,
-    projectedMonthly: 0.689400
+  // 수익 분석 데이터 (Supabase에서 계산됨)
+  const [earningsAnalysis, setEarningsAnalysis] = useState<EarningsAnalysis>({
+    totalEarnings: 0,
+    lastDayProfit: 0,
+    thirtyDayProfit: 0,
+    avgDailyEarnings: 0,
+    bestDailyRecord: 0,
+    projectedMonthly: 0
   });
 
   // 24시간 = 86400초
   const TOTAL_MINING_TIME = 86400;
+
+  // Supabase 마이닝 데이터 로드
+  const loadMiningData = useCallback(async () => {
+    if (!supabaseUser || !isSupabaseConnected) return;
+    
+    setIsLoadingMiningData(true);
+    try {
+      console.log('📊 [EarnPage] Supabase 마이닝 데이터 로딩 중...');
+      
+      // 활성 마이닝 세션 확인
+      const activeSession = await SupabaseMiningService.getActiveMiningSession(supabaseUser.id);
+      setActiveMiningSession(activeSession);
+      
+      // 마이닝 히스토리 가져오기
+      const history = await SupabaseMiningService.getMiningHistory(supabaseUser.id, 20);
+      setMiningHistory(history);
+      
+      // 활성 세션이 있으면 마이닝 상태 복원
+      if (activeSession) {
+        const startTime = new Date(activeSession.start_time).getTime();
+        const now = Date.now();
+        const elapsed = Math.floor((now - startTime) / 1000);
+        
+        // 24시간 초과 체크
+        if (elapsed >= TOTAL_MINING_TIME) {
+          // 자동으로 세션 종료
+          const earnings = calculateFinalEarnings(elapsed, activeSession.hash_rate || 12.0, activeSession.efficiency || 78.5);
+          await completeMiningSession(activeSession.id, earnings);
+          
+          // 상태 리셋
+          setIsMining(false);
+          setMiningTime(TOTAL_MINING_TIME);
+          setActiveMiningSession(null);
+          
+          // 히스토리 다시 로드
+          const updatedHistory = await SupabaseMiningService.getMiningHistory(supabaseUser.id, 20);
+          setMiningHistory(updatedHistory);
+        } else {
+          // 마이닝 상태 복원
+          setIsMining(true);
+          setMiningTime(elapsed);
+          setMiningStartTime(startTime);
+          setHashRate(activeSession.hash_rate || 12.0);
+          setEarnings(calculateCurrentEarnings(elapsed, activeSession.hash_rate || 12.0, activeSession.efficiency || 78.5));
+          
+          // 효율성 복원
+          setEfficiency(prev => ({
+            ...prev,
+            current: activeSession.efficiency || 78.5
+          }));
+        }
+      } else {
+        // 활성 세션이 없으면 상태 초기화
+        setIsMining(false);
+        setMiningTime(0);
+        setMiningStartTime(null);
+        setEarnings(0);
+      }
+      
+      // 수익 분석 계산
+      calculateEarningsAnalysis(history);
+      
+      console.log('✅ [EarnPage] 마이닝 데이터 로딩 완료:', {
+        hasActiveSession: !!activeSession,
+        historyCount: history.length
+      });
+    } catch (error) {
+      console.error('❌ [EarnPage] 마이닝 데이터 로딩 실패:', error);
+    } finally {
+      setIsLoadingMiningData(false);
+    }
+  }, [supabaseUser, isSupabaseConnected, completeMiningSession]);
+
+  // 수익 계산 함수들
+  const calculateCurrentEarnings = (seconds: number, hashRateValue: number, efficiencyValue: number): number => {
+    const baseEarningsPerSecond = 0.001 / 3600; // 시간당 0.001 BNB
+    const hashRateMultiplier = hashRateValue / 12.0; // 기본 12.0 TH/s 대비
+    const efficiencyMultiplier = efficiencyValue / 70; // 기본 70% 대비
+    
+    return seconds * baseEarningsPerSecond * hashRateMultiplier * efficiencyMultiplier;
+  };
+
+  const calculateFinalEarnings = (seconds: number, hashRateValue: number, efficiencyValue: number): number => {
+    return calculateCurrentEarnings(Math.min(seconds, TOTAL_MINING_TIME), hashRateValue, efficiencyValue);
+  };
+
+  // 수익 분석 계산
+  const calculateEarningsAnalysis = (history: MiningSession[]) => {
+    if (history.length === 0) {
+      setEarningsAnalysis({
+        totalEarnings: 0,
+        lastDayProfit: 0,
+        thirtyDayProfit: 0,
+        avgDailyEarnings: 0,
+        bestDailyRecord: 0,
+        projectedMonthly: 0
+      });
+      return;
+    }
+
+    const completedSessions = history.filter(session => session.status === 'completed' && session.earnings_bnb);
+    const totalEarnings = completedSessions.reduce((sum, session) => sum + (session.earnings_bnb || 0), 0);
+    
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    
+    const lastDayProfit = completedSessions
+      .filter(session => new Date(session.created_at) >= yesterday)
+      .reduce((sum, session) => sum + (session.earnings_bnb || 0), 0);
+    
+    const thirtyDayProfit = completedSessions
+      .filter(session => new Date(session.created_at) >= thirtyDaysAgo)
+      .reduce((sum, session) => sum + (session.earnings_bnb || 0), 0);
+    
+    const avgDailyEarnings = completedSessions.length > 0 ? totalEarnings / completedSessions.length : 0;
+    const bestDailyRecord = Math.max(...completedSessions.map(session => session.earnings_bnb || 0), 0);
+    const projectedMonthly = avgDailyEarnings * 30;
+
+    setEarningsAnalysis({
+      totalEarnings,
+      lastDayProfit,
+      thirtyDayProfit,
+      avgDailyEarnings,
+      bestDailyRecord,
+      projectedMonthly
+    });
+  };
+
+  // 컴포넌트 마운트시 데이터 로드
+  useEffect(() => {
+    if (isSupabaseConnected && supabaseUser) {
+      loadMiningData();
+    }
+  }, [isSupabaseConnected, supabaseUser, loadMiningData]);
 
   // 팀 보너스 계산 함수 - useCallback으로 메모이제이션
   const calculateTeamBonus = useCallback((memberCount: number): number => {
@@ -432,66 +585,26 @@ const EarnPage: React.FC = () => {
     }));
   };
 
-  // 페이지 로드시 저장된 상태 복원
-  useEffect(() => {
-    // 마이닝 상태 복원
-    const savedMiningState = localStorage.getItem('miningState');
-    if (savedMiningState) {
-      const { isMining: savedIsMining, startTime, earnings: savedEarnings } = JSON.parse(savedMiningState);
-      
-      if (savedIsMining && startTime) {
-        const now = Date.now();
-        const elapsed = Math.floor((now - startTime) / 1000);
-        
-        if (elapsed < TOTAL_MINING_TIME) {
-          setIsMining(true);
-          setMiningTime(elapsed);
-          setMiningStartTime(startTime);
-          setEarnings(savedEarnings + (elapsed * 0.001 / 3600));
-        } else {
-          // 24시간 완료
-          setMiningTime(TOTAL_MINING_TIME);
-          setEarnings(savedEarnings + 0.024);
-          localStorage.removeItem('miningState');
-        }
-      }
-    }
-  }, []);
-
-  // 채굴 상태 저장
-  useEffect(() => {
-    if (isMining && miningStartTime) {
-      const miningState = {
-        isMining,
-        startTime: miningStartTime,
-        earnings
-      };
-      localStorage.setItem('miningState', JSON.stringify(miningState));
-    }
-  }, [isMining, miningStartTime, earnings]);
-
-  // 마이닝 타이머 - 의존성 단순화
+  // 마이닝 타이머 - Supabase 연동
   useEffect(() => {
     let interval: NodeJS.Timeout;
     
-    if (isMining && miningTime < TOTAL_MINING_TIME) {
+    if (isMining && miningTime < TOTAL_MINING_TIME && activeMiningSession) {
       interval = setInterval(() => {
         setMiningTime(prev => {
           const newTime = prev + 1;
           
           // 효율성과 Hash Rate를 반영한 채굴 수익 계산
-          const efficiencyMultiplier = efficiency.current / 70;
-          const hashRateMultiplier = hashRateData.current / hashRateData.base;
-          setEarnings(prev => prev + (0.001 / 3600) * efficiencyMultiplier * hashRateMultiplier);
+          const currentEarnings = calculateCurrentEarnings(newTime, hashRateData.current, efficiency.current);
+          setEarnings(currentEarnings);
           
           // 해시레이트 변동 시뮬레이션
           const baseHashRate = hashRateData.current;
           setHashRate(baseHashRate + (Math.random() - 0.5) * 0.2);
           
+          // 24시간 완료 체크
           if (newTime >= TOTAL_MINING_TIME) {
-            setIsMining(false);
-            // 마이닝 완료시 연속일 증가
-            setLoginStreak(prev => prev + 1);
+            handleMiningComplete();
           }
           
           return newTime;
@@ -500,32 +613,96 @@ const EarnPage: React.FC = () => {
     }
     
     return () => clearInterval(interval);
-  }, [isMining, miningTime, efficiency.current, hashRateData.current, hashRateData.base]);
+  }, [isMining, miningTime, activeMiningSession, hashRateData.current, efficiency.current]);
 
-  const handleMiningToggle = () => {
-    if (miningTime >= TOTAL_MINING_TIME) {
-      // 24시간 완료 후 리셋
-      setMiningTime(0);
-      setEarnings(0);
-      setMiningStartTime(null);
-      localStorage.removeItem('miningState');
+  // 마이닝 완료 처리
+  const handleMiningComplete = async () => {
+    if (!activeMiningSession) return;
+    
+    try {
+      const finalEarnings = calculateFinalEarnings(TOTAL_MINING_TIME, hashRateData.current, efficiency.current);
+      const success = await completeMiningSession(activeMiningSession.id, finalEarnings);
+      
+      if (success) {
+        setIsMining(false);
+        setActiveMiningSession(null);
+        setLoginStreak(prev => prev + 1);
+        
+        // 마이닝 데이터 다시 로드
+        await loadMiningData();
+        
+        console.log('✅ [Mining] 24시간 마이닝 세션 완료');
+      }
+    } catch (error) {
+      console.error('❌ [Mining] 마이닝 완료 처리 실패:', error);
+    }
+  };
+
+  // 마이닝 시작/종료 토글
+  const handleMiningToggle = async () => {
+    if (!isSupabaseConnected || !supabaseUser) {
+      alert('Supabase 연결이 필요합니다.');
       return;
     }
-    
-    if (!isMining) {
-      // 채굴 시작
-      const startTime = Date.now() - (miningTime * 1000);
-      setMiningStartTime(startTime);
-      setIsMining(true);
-    } else {
-      // 채굴 정지
-      setIsMining(false);
-      setMiningStartTime(null);
-      localStorage.removeItem('miningState');
-      setEfficiency(prev => ({
-        ...prev,
-        interruptionCount: prev.interruptionCount + 1
-      }));
+
+    try {
+      if (miningTime >= TOTAL_MINING_TIME) {
+        // 24시간 완료 후 새 세션 시작
+        setMiningTime(0);
+        setEarnings(0);
+        setMiningStartTime(null);
+        setActiveMiningSession(null);
+        return;
+      }
+      
+      if (!isMining) {
+        // 마이닝 시작
+        console.log('🚀 [Mining] 마이닝 세션 시작...');
+        
+        const session = await SupabaseMiningService.startMiningSession(supabaseUser.id);
+        if (session) {
+          const startTime = Date.now();
+          setMiningStartTime(startTime);
+          setIsMining(true);
+          setActiveMiningSession(session);
+          setMiningTime(0);
+          setEarnings(0);
+          
+          console.log('✅ [Mining] 마이닝 세션 시작 성공:', session.id);
+        } else {
+          alert('마이닝 세션 시작에 실패했습니다.');
+        }
+      } else {
+        // 마이닝 정지
+        console.log('⏸️ [Mining] 마이닝 세션 중단...');
+        
+        if (activeMiningSession) {
+          const finalEarnings = calculateCurrentEarnings(miningTime, hashRateData.current, efficiency.current);
+          const success = await completeMiningSession(activeMiningSession.id, finalEarnings);
+          
+          if (success) {
+            setIsMining(false);
+            setMiningStartTime(null);
+            setActiveMiningSession(null);
+            
+            // 중단 카운트 증가
+            setEfficiency(prev => ({
+              ...prev,
+              interruptionCount: prev.interruptionCount + 1
+            }));
+            
+            // 마이닝 데이터 다시 로드
+            await loadMiningData();
+            
+            console.log('✅ [Mining] 마이닝 세션 중단 완료');
+          } else {
+            alert('마이닝 세션 중단에 실패했습니다.');
+          }
+        }
+      }
+    } catch (error) {
+      console.error('❌ [Mining] 마이닝 토글 오류:', error);
+      alert('마이닝 작업 중 오류가 발생했습니다.');
     }
   };
 
@@ -632,14 +809,6 @@ const EarnPage: React.FC = () => {
     }
   ], [earnings, hashRateData.current, hashRateData.base, miningTime, currentEfficiency, isMining, getEfficiencyGrade]);
 
-  const miningHistory = useMemo(() => [
-    { date: '2024-01-05', duration: '24:00:00', earnings: 0.024, efficiency: 87.3, status: 'completed' },
-    { date: '2024-01-04', duration: '24:00:00', earnings: 0.023, efficiency: 85.1, status: 'completed' },
-    { date: '2024-01-03', duration: '18:30:00', earnings: 0.018, efficiency: 72.8, status: 'interrupted' },
-    { date: '2024-01-02', duration: '24:00:00', earnings: 0.025, efficiency: 89.2, status: 'completed' },
-    { date: '2024-01-01', duration: '24:00:00', earnings: 0.022, efficiency: 83.5, status: 'completed' },
-  ], []);
-
   return (
     <div className="h-full overflow-auto">
       {/* Main Content */}
@@ -650,7 +819,53 @@ const EarnPage: React.FC = () => {
           <p className="text-sm md:text-base text-gray-600">
             Start your 24-hour mining session and optimize your Hash Rate & efficiency for maximum rewards.
           </p>
+          
+          {/* Supabase 연결 상태 표시 */}
+          <div className="flex items-center space-x-4 mt-2">
+            <div className={`flex items-center space-x-2 text-sm ${
+              isSupabaseConnected ? 'text-green-600' : 'text-red-600'
+            }`}>
+              {isSupabaseConnected ? (
+                <Wifi className="w-4 h-4" />
+              ) : (
+                <WifiOff className="w-4 h-4" />
+              )}
+              <span>
+                {isSupabaseConnected ? 'Database Connected' : 'Database Disconnected'}
+              </span>
+            </div>
+            
+            {activeMiningSession && (
+              <div className="flex items-center space-x-2 text-sm text-blue-600">
+                <Database className="w-4 h-4" />
+                <span>Session: {activeMiningSession.id.slice(0, 8)}...</span>
+              </div>
+            )}
+            
+            {isLoadingMiningData && (
+              <div className="flex items-center space-x-2 text-sm text-gray-500">
+                <div className="w-4 h-4 border-2 border-gray-400 border-t-transparent rounded-full animate-spin"></div>
+                <span>Loading...</span>
+              </div>
+            )}
+          </div>
         </div>
+
+        {/* Supabase 연결 경고 */}
+        {!isSupabaseConnected && (
+          <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+            <div className="flex items-start space-x-3">
+              <AlertTriangle className="w-5 h-5 text-yellow-600 mt-0.5" />
+              <div>
+                <p className="text-yellow-800 font-medium">Database Connection Required</p>
+                <p className="text-yellow-700 text-sm mt-1">
+                  Mining sessions require database connection to save progress and earnings. 
+                  Please ensure you're logged in and connected.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Active Lucky Booster Card */}
         {activeLuckyBooster && (
@@ -706,6 +921,12 @@ const EarnPage: React.FC = () => {
                   {isMining ? 'Mining Active' : 
                    miningTime >= TOTAL_MINING_TIME ? 'Session Complete' : 'Mining Stopped'}
                 </div>
+                
+                {activeMiningSession && (
+                  <p className="text-xs text-gray-500 mt-2">
+                    Session ID: {activeMiningSession.id.slice(0, 8)}...
+                  </p>
+                )}
               </div>
 
               {/* Progress Circle */}
@@ -755,15 +976,22 @@ const EarnPage: React.FC = () => {
                 size="lg"
                 icon={isMining ? Pause : Play}
                 className="w-full max-w-xs"
-                disabled={miningTime >= TOTAL_MINING_TIME && !isMining}
+                disabled={!isSupabaseConnected || (miningTime >= TOTAL_MINING_TIME && !isMining)}
+                loading={isLoadingMiningData}
               >
                 {miningTime >= TOTAL_MINING_TIME ? 'Start New Session' :
-                 isMining ? 'Pause Mining' : 'Start Mining'}
+                 isMining ? 'Stop Mining' : 'Start Mining'}
               </Button>
 
               {miningTime >= TOTAL_MINING_TIME && (
                 <p className="mt-4 text-sm text-gray-600">
                   Congratulations! You've completed a 24-hour mining session.
+                </p>
+              )}
+              
+              {!isSupabaseConnected && (
+                <p className="mt-4 text-sm text-red-600">
+                  Database connection required for mining operations.
                 </p>
               )}
             </div>
@@ -1014,39 +1242,90 @@ const EarnPage: React.FC = () => {
 
         {/* Earnings Analysis and Mining History */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Mining History */}
+          {/* Mining History - Supabase 데이터 */}
           <Card>
-            <h3 className="text-lg font-semibold text-gray-900 mb-6">Mining History</h3>
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center">
+                <Clock className="w-5 h-5 mr-2" />
+                Mining History
+                {isSupabaseConnected && (
+                  <span className="ml-2 px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">
+                    Live
+                  </span>
+                )}
+              </h3>
+              <Button
+                onClick={loadMiningData}
+                variant="outline"
+                size="sm"
+                loading={isLoadingMiningData}
+                icon={Database}
+                disabled={!isSupabaseConnected}
+              >
+                Refresh
+              </Button>
+            </div>
+            
             <div className="space-y-4">
-              {miningHistory.map((session, index) => (
-                <div key={index} className="flex items-center justify-between p-4 bg-gray-50 rounded-lg">
-                  <div>
-                    <p className="font-medium text-gray-900">{session.date}</p>
-                    <p className="text-sm text-gray-600">Duration: {session.duration}</p>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-medium text-gray-900">₿{session.earnings}</p>
-                    <div className="flex items-center space-x-2">
-                      <span className={`text-xs font-medium ${getEfficiencyColor(session.efficiency)}`}>
-                        {session.efficiency}% eff.
-                      </span>
-                      <span className={`inline-flex items-center px-2 py-1 rounded-full text-xs font-medium ${
-                        session.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'
-                      }`}>
-                        {session.status}
-                      </span>
+              {miningHistory.length > 0 ? (
+                miningHistory.slice(0, 5).map((session) => (
+                  <div key={session.id} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg">
+                    <div>
+                      <p className="text-sm font-medium text-gray-900">
+                        {session.status === 'completed' ? 'Completed' : 'Active'}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {new Date(session.start_time).toLocaleDateString()} {new Date(session.start_time).toLocaleTimeString()}
+                      </p>
+                      {session.duration_seconds && (
+                        <p className="text-xs text-blue-600">
+                          Duration: {Math.floor(session.duration_seconds / 3600)}h {Math.floor((session.duration_seconds % 3600) / 60)}m
+                        </p>
+                      )}
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold text-green-600">
+                        +{session.earnings_bnb?.toFixed(6) || '0.000000'} BNB
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        {session.efficiency?.toFixed(1) || '0.0'}% efficiency
+                      </p>
+                      <p className="text-xs text-orange-600">
+                        {session.hash_rate?.toFixed(1) || '0.0'} TH/s
+                      </p>
                     </div>
                   </div>
+                ))
+              ) : (
+                <div className="text-center py-8 text-gray-500">
+                  {isSupabaseConnected ? (
+                    <div>
+                      <Zap className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                      <p>No mining history yet</p>
+                      <p className="text-sm">Start your first mining session!</p>
+                    </div>
+                  ) : (
+                    <div>
+                      <WifiOff className="w-12 h-12 mx-auto mb-3 text-gray-300" />
+                      <p>Database not connected</p>
+                      <p className="text-sm">Connect to view history</p>
+                    </div>
+                  )}
                 </div>
-              ))}
+              )}
             </div>
           </Card>
 
-          {/* Earn Analysis */}
+          {/* Earn Analysis - Supabase 데이터 기반 */}
           <Card>
             <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center">
               <BarChart3 className="w-5 h-5 mr-2" />
               Earn Analysis
+              {isSupabaseConnected && (
+                <span className="ml-2 px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">
+                  Real-time
+                </span>
+              )}
             </h3>
             
             {/* Top Metrics Grid */}
@@ -1111,6 +1390,15 @@ const EarnPage: React.FC = () => {
                   </span>
                 </div>
               )}
+              
+              {activeMiningSession && (
+                <div className="flex justify-between items-center text-sm">
+                  <span className="text-gray-600">Current Session</span>
+                  <span className="font-medium text-purple-600">
+                    {activeMiningSession.id.slice(0, 8)}...
+                  </span>
+                </div>
+              )}
             </div>
 
             {/* Performance Indicator */}
@@ -1120,8 +1408,11 @@ const EarnPage: React.FC = () => {
                 <div>
                   <p className="text-xs text-orange-700 font-medium">Performance Tip</p>
                   <p className="text-xs text-orange-600 mt-1">
-                    Connect more SNS accounts and maintain {currentEfficiency >= 85 ? 'your excellent' : 'high'} efficiency 
-                    {currentEfficiency < 85 && ' (target: 85%+)'} for maximum daily rewards.
+                    {isSupabaseConnected 
+                      ? `Connect more SNS accounts and maintain ${currentEfficiency >= 85 ? 'your excellent' : 'high'} efficiency 
+                         ${currentEfficiency < 85 && ' (target: 85%+)'} for maximum daily rewards.`
+                      : 'Connect to database to track your mining performance and earnings history.'
+                    }
                   </p>
                 </div>
               </div>

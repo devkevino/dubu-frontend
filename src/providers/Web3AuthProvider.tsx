@@ -3,7 +3,11 @@ import { WALLET_ADAPTERS, ADAPTER_EVENTS, IProvider } from "@web3auth/base";
 import Web3 from "web3";
 import web3auth, { CURRENT_NETWORK } from '../lib/web3auth/config';
 import { Web3AuthContextType, Web3AuthState, Web3AuthUser, LoginProvider } from '../types/web3auth.types';
-import { SupabaseAuthService, SupabaseSessionService, SupabaseMiningService } from '../lib/supabase/services';
+import { 
+  edgeUserService, 
+  edgeMiningService, 
+  EdgeSessionService 
+} from '../lib/supabase/edgeClient';
 import { UserProfile } from '../lib/supabase/types';
 
 // Ethereum RPC Error 타입 정의
@@ -18,7 +22,7 @@ type Web3Provider = IProvider & {
   request?: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
 };
 
-// 확장된 상태 타입 (Supabase 정보 포함)
+// 확장된 상태 타입 (Edge Function 기반)
 interface ExtendedWeb3AuthState extends Web3AuthState {
   supabaseUser: UserProfile | null;
   isSupabaseConnected: boolean;
@@ -53,13 +57,47 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
     isSupabaseConnected: false,
   });
 
-  // Supabase 사용자 정보 새로고침
+  // 메시지 서명을 통한 인증 데이터 생성
+  const createAuthData = useCallback(async (walletAddress: string): Promise<{ walletAddress: string; signature: string; message: string } | null> => {
+    try {
+      if (!web3auth.provider) {
+        console.error('❌ [Web3Auth] Provider가 없습니다');
+        return null;
+      }
+
+      const message = `로그인 인증 요청\n지갑 주소: ${walletAddress}\n타임스탬프: ${Date.now()}`;
+      const web3 = new Web3(web3auth.provider as unknown as string);
+      const signature = await web3.eth.personal.sign(message, walletAddress, '');
+
+      return {
+        walletAddress,
+        signature,
+        message,
+      };
+    } catch (error) {
+      console.error('❌ [Web3Auth] 인증 데이터 생성 실패:', error);
+      return null;
+    }
+  }, []);
+
+  // Edge Function을 통한 Supabase 사용자 정보 새로고침
   const refreshSupabaseUser = useCallback(async () => {
     if (!state.address) return;
 
     try {
-      console.log('🔄 [Supabase] 사용자 정보 새로고침 중...');
-      const supabaseUser = await SupabaseAuthService.getUserByWalletAddress(state.address);
+      console.log('🔄 [EdgeSupabase] 사용자 정보 새로고침 중...');
+      
+      // 캐시된 인증 데이터 사용 또는 새로 생성
+      let authData = EdgeSessionService.getAuthData();
+      if (!authData) {
+        authData = await createAuthData(state.address);
+        if (!authData) {
+          console.error('❌ [EdgeSupabase] 인증 데이터 생성 실패');
+          return;
+        }
+      }
+      
+      const supabaseUser = await edgeUserService.getMyProfile(authData);
       
       setState(prev => ({
         ...prev,
@@ -67,16 +105,23 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
         isSupabaseConnected: !!supabaseUser,
       }));
 
-      console.log('✅ [Supabase] 사용자 정보 새로고침 완료:', supabaseUser ? '사용자 존재' : '사용자 없음');
+      console.log('✅ [EdgeSupabase] 사용자 정보 새로고침 완료:', supabaseUser ? '사용자 존재' : '사용자 없음');
     } catch (error) {
-      console.error('❌ [Supabase] 사용자 정보 새로고침 실패:', error);
+      console.error('❌ [EdgeSupabase] 사용자 정보 새로고침 실패:', error);
     }
-  }, [state.address]);
+  }, [state.address, createAuthData]);
 
-  // Web3Auth 사용자를 Supabase에 동기화
+  // Edge Function을 통한 Web3Auth 사용자를 Supabase에 동기화
   const syncUserToSupabase = useCallback(async (web3AuthUser: Web3AuthUser, walletAddress: string) => {
     try {
-      console.log('🔄 [Supabase] 사용자 동기화 시작...');
+      console.log('🔄 [EdgeSupabase] 사용자 동기화 시작...');
+
+      // 인증 데이터 생성
+      const authData = await createAuthData(walletAddress);
+      if (!authData) {
+        console.error('❌ [EdgeSupabase] 인증 데이터 생성 실패');
+        return null;
+      }
 
       const userData = {
         walletAddress,
@@ -88,11 +133,11 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
         verifierId: web3AuthUser.verifierId,
       };
 
-      const supabaseUser = await SupabaseAuthService.upsertUser(userData);
+      const supabaseUser = await edgeUserService.upsertUser(userData, authData);
       
       if (supabaseUser) {
-        // 세션 생성
-        await SupabaseSessionService.createSession(supabaseUser);
+        // Edge 세션 생성
+        await EdgeSessionService.createSession(supabaseUser, authData);
         
         setState(prev => ({
           ...prev,
@@ -100,17 +145,17 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
           isSupabaseConnected: true,
         }));
 
-        console.log('✅ [Supabase] 사용자 동기화 성공');
+        console.log('✅ [EdgeSupabase] 사용자 동기화 성공');
         return supabaseUser;
       } else {
-        console.error('❌ [Supabase] 사용자 동기화 실패');
+        console.error('❌ [EdgeSupabase] 사용자 동기화 실패');
         return null;
       }
     } catch (error) {
-      console.error('❌ [Supabase] 사용자 동기화 중 오류:', error);
+      console.error('❌ [EdgeSupabase] 사용자 동기화 중 오류:', error);
       return null;
     }
-  }, []);
+  }, [createAuthData]);
 
   const updateUserInfo = useCallback(async () => {
     try {
@@ -160,7 +205,7 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
         localStorage.setItem('chainId', chainId?.toString() || '');
       }
 
-      // Supabase에 사용자 동기화
+      // Edge Function을 통한 Supabase 동기화
       if (user && address) {
         await syncUserToSupabase(user, address);
       }
@@ -175,17 +220,27 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
     }
   }, [syncUserToSupabase]);
 
-  // 세션 복원 체크
+  // 세션 복원 체크 (Edge Function 기반)
   useEffect(() => {
-    const checkExistingSession = () => {
-      const sessionUser = SupabaseSessionService.validateSession();
-      if (sessionUser) {
-        console.log('🔄 [Supabase] 기존 세션 발견, 복원 중...');
-        setState(prev => ({
-          ...prev,
-          supabaseUser: sessionUser,
-          isSupabaseConnected: true,
-        }));
+    const checkExistingSession = async () => {
+      const sessionData = EdgeSessionService.validateSession();
+      if (sessionData) {
+        console.log('🔄 [EdgeSupabase] 기존 세션 발견, 복원 중...');
+        
+        try {
+          const authData = EdgeSessionService.getAuthData();
+          if (authData) {
+            const supabaseUser = await edgeUserService.getMyProfile(authData);
+            setState(prev => ({
+              ...prev,
+              supabaseUser,
+              isSupabaseConnected: !!supabaseUser,
+            }));
+          }
+        } catch (error) {
+          console.error('❌ [EdgeSupabase] 세션 복원 실패:', error);
+          EdgeSessionService.clearSession();
+        }
       }
     };
 
@@ -231,8 +286,8 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
     const handleDisconnected = () => {
       console.log('👋 [Web3Auth] Disconnected event fired');
       
-      // Supabase 세션도 정리
-      SupabaseSessionService.clearSession();
+      // Edge Session도 정리
+      EdgeSessionService.clearSession();
       
       setState({
         isLoading: false,
@@ -369,13 +424,13 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
         await web3auth.logout();
       }
       
-      // localStorage 및 Supabase 세션 정리
+      // localStorage 및 Edge Session 정리
       localStorage.removeItem('isAuthenticated');
       localStorage.removeItem('userData');
       localStorage.removeItem('userAddress');
       localStorage.removeItem('chainId');
       localStorage.removeItem('miningState');
-      SupabaseSessionService.clearSession();
+      EdgeSessionService.clearSession();
       
       console.log('✅ [Web3Auth] Logout completed');
       
@@ -490,35 +545,58 @@ export const Web3AuthProvider: React.FC<Web3AuthProviderProps> = ({ children }) 
     }
   };
 
-  // 마이닝 관련 Supabase 메서드들
+  // Edge Function 기반 마이닝 메서드들
   const startMiningSession = async (): Promise<boolean> => {
     try {
-      if (!state.supabaseUser) {
-        console.error('❌ [Mining] Supabase 사용자 정보가 없습니다');
+      if (!state.supabaseUser || !state.address) {
+        console.error('❌ [EdgeMining] Supabase 사용자 정보나 지갑 주소가 없습니다');
         return false;
       }
 
-      const session = await SupabaseMiningService.startMiningSession(state.supabaseUser.id);
+      const authData = EdgeSessionService.getAuthData() || await createAuthData(state.address);
+      if (!authData) {
+        console.error('❌ [EdgeMining] 인증 데이터 생성 실패');
+        return false;
+      }
+
+      const session = await edgeMiningService.startMiningSession(
+        state.supabaseUser.id,
+        15.2, // 기본 해시레이트
+        87.3, // 기본 효율성
+        authData
+      );
+
       if (session) {
-        console.log('✅ [Mining] 마이닝 세션 시작:', session);
+        console.log('✅ [EdgeMining] 마이닝 세션 시작:', session);
         return true;
       }
       return false;
     } catch (error) {
-      console.error('❌ [Mining] 마이닝 세션 시작 실패:', error);
+      console.error('❌ [EdgeMining] 마이닝 세션 시작 실패:', error);
       return false;
     }
   };
 
   const endMiningSession = async (sessionId: string, earnings: number): Promise<boolean> => {
     try {
-      const success = await SupabaseMiningService.endMiningSession(sessionId, earnings);
+      if (!state.address) {
+        console.error('❌ [EdgeMining] 지갑 주소가 없습니다');
+        return false;
+      }
+
+      const authData = EdgeSessionService.getAuthData() || await createAuthData(state.address);
+      if (!authData) {
+        console.error('❌ [EdgeMining] 인증 데이터 생성 실패');
+        return false;
+      }
+
+      const success = await edgeMiningService.endMiningSession(sessionId, earnings, authData);
       if (success) {
-        console.log('✅ [Mining] 마이닝 세션 종료 성공');
+        console.log('✅ [EdgeMining] 마이닝 세션 종료 성공');
       }
       return success;
     } catch (error) {
-      console.error('❌ [Mining] 마이닝 세션 종료 실패:', error);
+      console.error('❌ [EdgeMining] 마이닝 세션 종료 실패:', error);
       return false;
     }
   };
